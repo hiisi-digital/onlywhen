@@ -2,35 +2,22 @@
 
 > Last tested: 2025-12-12
 
-### Deno
+These tests verify that the package works correctly in each runtime environment.
+Runtime detection (`runtime.node`, `runtime.deno`, etc.) is tested, along with
+API functionality. Platform detection is cross-platform by design.
 
-| Version | Platform | Status |
-| ------- | -------- | ------ |
-| v1.x    | ubuntu   | ✅     |
-| v2.x    | macos    | ✅     |
-| v2.x    | ubuntu   | ✅     |
-| v2.x    | windows  | ✅     |
+| Runtime | Version | Status |
+|---------|---------|--------|
+| Deno | v1.x | ✅ |
+| Deno | v2.x | ✅ |
+| Node.js | 18 | ✅ |
+| Node.js | 20 | ✅ |
+| Node.js | 22 | ✅ |
+| Bun | canary | ✅ |
+| Bun | latest | ✅ |
 
-### Node.js
+### Summary
 
-| Version | Platform | Status |
-| ------- | -------- | ------ |
-| 18      | ubuntu   | ✅     |
-| 20      | macos    | ✅     |
-| 20      | ubuntu   | ✅     |
-| 20      | windows  | ✅     |
-| 22      | ubuntu   | ✅     |
-
-### Bun
-
-| Version | Platform | Status |
-| ------- | -------- | ------ |
-| canary  | ubuntu   | ✅     |
-| latest  | macos    | ✅     |
-| latest  | ubuntu   | ✅     |
-
-### Quick Status
-
-- Deno: ✅ All tests passing
-- Node.js: ✅ All tests passing
-- Bun: ✅ All tests passing
+- **Deno**: ✅ All versions passing
+- **Node.js**: ✅ All versions passing
+- **Bun**: ✅ All versions passing
