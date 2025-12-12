@@ -167,9 +167,13 @@ Define features in your `deno.json` or `package.json`:
 Check them at runtime:
 
 ```typescript
-import { onlywhen } from "@hiisi/onlywhen";
+import { feature, onlywhen } from "@hiisi/onlywhen";
 
-onlywhen.feature("experimental"); // true if listed
+// Standalone function (preferred)
+feature("experimental"); // true if listed
+
+// Or via onlywhen object
+onlywhen.feature("experimental"); // also works
 onlywhen.features; // Set<string> of all features
 ```
 
@@ -192,7 +196,7 @@ class App {
   @onlywhen(all(platform.linux, arch.x64))
   linuxX64Method() {/* ... */}
 
-  @onlywhen(onlywhen.feature("experimental"))
+  @onlywhen(feature("experimental"))
   experimentalMethod() {/* ... */}
 }
 ```
@@ -404,6 +408,9 @@ for (const file of files) {
 
 Properties not in your config stay as runtime checks. This lets you partially
 bake values while keeping others dynamic.
+
+<!-- COMPATIBILITY_START -->
+<!-- COMPATIBILITY_END -->
 
 ## Support
 

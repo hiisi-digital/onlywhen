@@ -1,0 +1,378 @@
+name: Compatibility Matrix
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # Test matrix across runtimes and platforms
+  test-matrix:
+    name: ${{ matrix.runtime }} ${{ matrix.version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Deno on all platforms
+          - runtime: deno
+            version: v2.x
+            os: ubuntu-latest
+          - runtime: deno
+            version: v2.x
+            os: macos-latest
+          - runtime: deno
+            version: v2.x
+            os: windows-latest
+          - runtime: deno
+            version: v1.x
+            os: ubuntu-latest
+          
+          # Node.js versions on Ubuntu
+          - runtime: node
+            version: "18"
+            os: ubuntu-latest
+          - runtime: node
+            version: "20"
+            os: ubuntu-latest
+          - runtime: node
+            version: "22"
+            os: ubuntu-latest
+          
+          # Node.js on other platforms
+          - runtime: node
+            version: "20"
+            os: macos-latest
+          - runtime: node
+            version: "20"
+            os: windows-latest
+          
+          # Bun versions
+          - runtime: bun
+            version: latest
+            os: ubuntu-latest
+          - runtime: bun
+            version: canary
+            os: ubuntu-latest
+          - runtime: bun
+            version: latest
+            os: macos-latest
+
+    outputs:
+      results: ${{ steps.test.outputs.result }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        if: matrix.runtime == 'deno' || matrix.runtime == 'node' || matrix.runtime == 'bun'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Setup Node.js
+        if: matrix.runtime == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.version }}
+
+      - name: Setup Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ matrix.version }}
+
+      # Run Deno tests directly
+      - name: Test Deno
+        if: matrix.runtime == 'deno'
+        id: test-deno
+        run: |
+          deno test --allow-read --allow-write --allow-env --allow-run --allow-net
+          echo "status=pass" >> $GITHUB_OUTPUT
+
+      # Build npm package for Node/Bun tests
+      - name: Build npm package
+        if: matrix.runtime == 'node' || matrix.runtime == 'bun'
+        run: deno run -A scripts/build-npm.ts
+
+      # Run Node.js tests
+      - name: Test Node.js
+        if: matrix.runtime == 'node'
+        id: test-node
+        shell: bash
+        run: |
+          cd npm
+          node -e "
+            const { onlywhen, platform, runtime, arch, all, any, not } = require('./script/mod.js');
+            
+            // Basic checks
+            if (typeof onlywhen !== 'function') throw new Error('onlywhen should be a function');
+            if (typeof platform !== 'object') throw new Error('platform should be an object');
+            if (typeof runtime !== 'object') throw new Error('runtime should be an object');
+            if (typeof arch !== 'object') throw new Error('arch should be an object');
+            
+            // Runtime detection
+            if (!runtime.node) throw new Error('runtime.node should be true');
+            if (!onlywhen.node) throw new Error('onlywhen.node should be true');
+            if (runtime.deno) throw new Error('runtime.deno should be false');
+            if (runtime.bun) throw new Error('runtime.bun should be false');
+            if (runtime.browser) throw new Error('runtime.browser should be false');
+            
+            // Platform detection (should have exactly one true)
+            const platforms = [platform.darwin, platform.linux, platform.windows];
+            const trueCount = platforms.filter(Boolean).length;
+            if (trueCount !== 1) throw new Error('Exactly one platform should be true, got ' + trueCount);
+            
+            // Combinators
+            if (!all(runtime.node, not(runtime.deno))) throw new Error('Combinators failed');
+            if (!any(runtime.node, runtime.deno)) throw new Error('any() failed');
+            
+            console.log('All Node.js CJS tests passed!');
+          "
+          
+          node --input-type=module -e "
+            import { onlywhen, platform, runtime, arch, all, any, not } from './esm/mod.js';
+            
+            if (!runtime.node) throw new Error('runtime.node should be true (ESM)');
+            if (!all(runtime.node, not(runtime.bun))) throw new Error('Combinators failed (ESM)');
+            
+            console.log('All Node.js ESM tests passed!');
+          "
+          echo "status=pass" >> $GITHUB_OUTPUT
+
+      # Run Bun tests
+      - name: Test Bun
+        if: matrix.runtime == 'bun'
+        id: test-bun
+        shell: bash
+        run: |
+          cd npm
+          bun -e "
+            import { onlywhen, platform, runtime, arch, all, any, not } from './esm/mod.js';
+            
+            // Basic checks
+            if (typeof onlywhen !== 'function') throw new Error('onlywhen should be a function');
+            if (typeof platform !== 'object') throw new Error('platform should be an object');
+            if (typeof runtime !== 'object') throw new Error('runtime should be an object');
+            if (typeof arch !== 'object') throw new Error('arch should be an object');
+            
+            // Runtime detection
+            if (!runtime.bun) throw new Error('runtime.bun should be true');
+            if (!onlywhen.bun) throw new Error('onlywhen.bun should be true');
+            if (runtime.deno) throw new Error('runtime.deno should be false');
+            if (runtime.node) throw new Error('runtime.node should be false in Bun');
+            if (runtime.browser) throw new Error('runtime.browser should be false');
+            
+            // Platform detection (should have exactly one true)
+            const platforms = [platform.darwin, platform.linux, platform.windows];
+            const trueCount = platforms.filter(Boolean).length;
+            if (trueCount !== 1) throw new Error('Exactly one platform should be true, got ' + trueCount);
+            
+            // Combinators
+            if (!all(runtime.bun, not(runtime.deno))) throw new Error('Combinators failed');
+            if (!any(runtime.bun, runtime.node)) throw new Error('any() failed');
+            
+            console.log('All Bun ESM tests passed!');
+          "
+          echo "status=pass" >> $GITHUB_OUTPUT
+
+      - name: Record result
+        id: test
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "result=pass" >> $GITHUB_OUTPUT
+          else
+            echo "result=fail" >> $GITHUB_OUTPUT
+          fi
+
+  # Collect results and generate compatibility matrix
+  generate-matrix:
+    name: Generate Compatibility Matrix
+    runs-on: ubuntu-latest
+    needs: test-matrix
+    if: always()
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Download workflow run data
+        uses: actions/github-script@v7
+        id: get-results
+        with:
+          script: |
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            
+            const results = {};
+            
+            for (const job of jobs.data.jobs) {
+              // Parse job name like "deno v2.x on ubuntu-latest"
+              const match = job.name.match(/^(\w+)\s+([^\s]+)\s+on\s+(.+)$/);
+              if (match) {
+                const [, runtime, version, os] = match;
+                const key = `${runtime}-${version}-${os}`;
+                results[key] = {
+                  runtime,
+                  version,
+                  os,
+                  status: job.conclusion === 'success' ? 'pass' : 
+                          job.conclusion === 'failure' ? 'fail' : 
+                          job.conclusion || 'pending'
+                };
+              }
+            }
+            
+            core.setOutput('results', JSON.stringify(results));
+            return results;
+
+      - name: Generate compatibility table
+        id: generate-table
+        run: |
+          cat << 'EOF' > generate_table.ts
+          const results = JSON.parse(Deno.env.get("RESULTS") || "{}");
+          
+          // Helper to get emoji
+          const emoji = (status: string) => {
+            switch (status) {
+              case "pass": return "✅";
+              case "fail": return "❌";
+              default: return "⏳";
+            }
+          };
+          
+          // Group by runtime
+          const deno: Record<string, string> = {};
+          const node: Record<string, string> = {};
+          const bun: Record<string, string> = {};
+          
+          for (const [key, data] of Object.entries(results) as [string, any][]) {
+            const label = `${data.version} (${data.os.replace("-latest", "")})`;
+            switch (data.runtime) {
+              case "deno":
+                deno[label] = data.status;
+                break;
+              case "node":
+                node[label] = data.status;
+                break;
+              case "bun":
+                bun[label] = data.status;
+                break;
+            }
+          }
+          
+          // Generate markdown table
+          let md = `## Runtime Compatibility\n\n`;
+          md += `> Last tested: ${new Date().toISOString().split("T")[0]}\n\n`;
+          
+          md += `### Deno\n\n`;
+          md += `| Version | Platform | Status |\n`;
+          md += `|---------|----------|--------|\n`;
+          for (const [label, status] of Object.entries(deno).sort()) {
+            const [version, platform] = label.match(/^([^\s]+)\s+\(([^)]+)\)$/)?.slice(1) || [label, ""];
+            md += `| ${version} | ${platform} | ${emoji(status)} |\n`;
+          }
+          
+          md += `\n### Node.js\n\n`;
+          md += `| Version | Platform | Status |\n`;
+          md += `|---------|----------|--------|\n`;
+          for (const [label, status] of Object.entries(node).sort()) {
+            const [version, platform] = label.match(/^([^\s]+)\s+\(([^)]+)\)$/)?.slice(1) || [label, ""];
+            md += `| ${version} | ${platform} | ${emoji(status)} |\n`;
+          }
+          
+          md += `\n### Bun\n\n`;
+          md += `| Version | Platform | Status |\n`;
+          md += `|---------|----------|--------|\n`;
+          for (const [label, status] of Object.entries(bun).sort()) {
+            const [version, platform] = label.match(/^([^\s]+)\s+\(([^)]+)\)$/)?.slice(1) || [label, ""];
+            md += `| ${version} | ${platform} | ${emoji(status)} |\n`;
+          }
+          
+          // Summary badges line
+          const allPass = Object.values(results).every((r: any) => r.status === "pass");
+          const denoPass = Object.values(deno).every(s => s === "pass");
+          const nodePass = Object.values(node).every(s => s === "pass");
+          const bunPass = Object.values(bun).every(s => s === "pass");
+          
+          let badges = `\n### Quick Status\n\n`;
+          badges += `- Deno: ${denoPass ? "✅ All tests passing" : "⚠️ Some tests failing"}\n`;
+          badges += `- Node.js: ${nodePass ? "✅ All tests passing" : "⚠️ Some tests failing"}\n`;
+          badges += `- Bun: ${bunPass ? "✅ All tests passing" : "⚠️ Some tests failing"}\n`;
+          
+          md += badges;
+          
+          console.log(md);
+          await Deno.writeTextFile("COMPATIBILITY.md", md);
+          EOF
+          
+          RESULTS='${{ steps.get-results.outputs.results }}' deno run --allow-env --allow-write generate_table.ts
+
+      - name: Upload compatibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-report
+          path: COMPATIBILITY.md
+
+      - name: Update README with compatibility section
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # Read the generated compatibility table
+          COMPAT_TABLE=$(cat COMPATIBILITY.md)
+          
+          # Check if README has compatibility section marker
+          if grep -q "<!-- COMPATIBILITY_START -->" README.md; then
+            # Replace content between markers
+            awk '
+              /<!-- COMPATIBILITY_START -->/ { print; skip=1; next }
+              /<!-- COMPATIBILITY_END -->/ { skip=0 }
+              !skip { print }
+            ' README.md > README.tmp
+            
+            # Insert new content
+            awk -v table="$COMPAT_TABLE" '
+              /<!-- COMPATIBILITY_START -->/ { print; print table; next }
+              { print }
+            ' README.tmp > README.md
+            rm README.tmp
+          else
+            # Append to README before the Support section
+            awk -v table="$COMPAT_TABLE" '
+              /^## Support/ {
+                print "<!-- COMPATIBILITY_START -->"
+                print table
+                print "<!-- COMPATIBILITY_END -->"
+                print ""
+              }
+              { print }
+            ' README.md > README.tmp
+            mv README.tmp README.md
+          fi
+
+      - name: Commit updated README
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add README.md COMPATIBILITY.md 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "docs: update compatibility matrix [skip ci]"
+          git push || echo "Nothing to push"

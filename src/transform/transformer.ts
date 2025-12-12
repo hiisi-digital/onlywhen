@@ -17,6 +17,7 @@ import {
   COMBINATOR_METHODS,
   DEFAULT_EXPORT_NAME,
   DEFAULT_MODULE_SPECIFIERS,
+  FEATURE_EXPORT_NAME,
   FEATURE_METHOD,
   KNOWN_BOOLEAN_PROPERTIES,
   NAMESPACE_EXPORTS,
@@ -74,6 +75,14 @@ interface CombinatorImportInfo {
 }
 
 /**
+ * Tracks feature function import.
+ */
+interface FeatureImportInfo {
+  /** The local name used in the source */
+  localName: string;
+}
+
+/**
  * All import information for a source file.
  */
 interface AllImports {
@@ -83,6 +92,8 @@ interface AllImports {
   namespaces: NamespaceImportInfo[];
   /** Combinator function imports (all, any, not) */
   combinators: CombinatorImportInfo[];
+  /** Feature function import */
+  feature: FeatureImportInfo | null;
 }
 
 /**
@@ -97,6 +108,7 @@ function findAllImports(
     onlywhen: [],
     namespaces: [],
     combinators: [],
+    feature: null,
   };
   const specifierSet = new Set(moduleSpecifiers);
 
@@ -139,6 +151,9 @@ function findAllImports(
               localName,
               exportName: importedName as "all" | "any" | "not",
             });
+          } // Check for feature function
+          else if (importedName === FEATURE_EXPORT_NAME) {
+            result.feature = { localName };
           }
         }
       } else if (ts.isNamespaceImport(importClause.namedBindings)) {
@@ -319,7 +334,8 @@ function createTransformerFactory(
       // If no relevant imports, return unchanged
       const hasImports = allImports.onlywhen.length > 0 ||
         allImports.namespaces.length > 0 ||
-        allImports.combinators.length > 0;
+        allImports.combinators.length > 0 ||
+        allImports.feature !== null;
 
       if (!hasImports) {
         return sourceFile;
@@ -342,6 +358,9 @@ function createTransformerFactory(
       for (const comb of allImports.combinators) {
         combinatorLocalToExport.set(comb.localName, comb.exportName);
       }
+
+      // Track the feature function local name
+      const featureLocalName = allImports.feature?.localName;
 
       /**
        * Check if an identifier refers to onlywhen.
@@ -415,6 +434,15 @@ function createTransformerFactory(
       }
 
       /**
+       * Check if a call expression is a standalone feature() call.
+       */
+      function isStandaloneFeatureCall(
+        callee: import("npm:typescript@^5.0").Expression,
+      ): boolean {
+        return ts.isIdentifier(callee) && callee.text === featureLocalName;
+      }
+
+      /**
        * Visitor function that transforms nodes.
        */
       function visitor(
@@ -469,6 +497,22 @@ function createTransformerFactory(
         // Handle method calls: onlywhen.all(...), all(...), etc.
         if (ts.isCallExpression(node)) {
           const callee = node.expression;
+
+          // Check for standalone feature() call
+          if (featureLocalName && isStandaloneFeatureCall(callee) && node.arguments.length === 1) {
+            const value = evaluateFeature(node.arguments[0], config.features);
+            if (value !== undefined) {
+              const pos = getNodePosition(node, sourceFile);
+              transformations.push({
+                type: "feature",
+                original: node.getText(sourceFile),
+                replacement: value ? "true" : "false",
+                line: pos.line,
+                column: pos.column,
+              });
+              return createBooleanLiteral(value);
+            }
+          }
 
           // Check for standalone combinator calls: all(...), any(...), not(...)
           const standaloneCombinator = getStandaloneCombinator(callee);
