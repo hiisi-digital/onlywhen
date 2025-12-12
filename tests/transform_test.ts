@@ -226,6 +226,37 @@ if (onlywhen.feature(name)) { console.log("experimental"); }`;
     assertStringIncludes(result.code, "onlywhen.feature(name)");
     assertEquals(result.transformCount, 0);
   });
+
+  it("should transform standalone feature() call to true", async () => {
+    const source = `import { feature } from "@hiisi/onlywhen";
+if (feature("experimental")) { console.log("experimental"); }`;
+
+    const result = await transform(source, { features: ["experimental"] });
+
+    assertStringIncludes(result.code, "if (true)");
+    assertEquals(result.transformCount, 1);
+    assertEquals(result.transformations[0].type, "feature");
+  });
+
+  it("should transform standalone feature() call to false", async () => {
+    const source = `import { feature } from "@hiisi/onlywhen";
+if (feature("experimental")) { console.log("experimental"); }`;
+
+    const result = await transform(source, { features: ["other"] });
+
+    assertStringIncludes(result.code, "if (false)");
+    assertEquals(result.transformCount, 1);
+  });
+
+  it("should handle aliased feature import", async () => {
+    const source = `import { feature as hasFlag } from "@hiisi/onlywhen";
+if (hasFlag("beta")) { console.log("beta"); }`;
+
+    const result = await transform(source, { features: ["beta"] });
+
+    assertStringIncludes(result.code, "if (true)");
+    assertEquals(result.transformCount, 1);
+  });
 });
 
 // =============================================================================

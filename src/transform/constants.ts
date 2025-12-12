@@ -71,6 +71,12 @@ export const COMBINATOR_EXPORT_NAMES: ReadonlySet<string> = new Set([
   "not",
 ]);
 
+/**
+ * The feature function name that can be imported directly.
+ * e.g., `import { feature } from "@hiisi/onlywhen"`
+ */
+export const FEATURE_EXPORT_NAME = "feature";
+
 // =============================================================================
 // Property Mappings
 // =============================================================================
