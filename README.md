@@ -442,20 +442,42 @@ indirection points, potentially improving runtime performance beyond just
 the decorator overhead savings.
 
 <!-- COMPATIBILITY_START -->
-
 ## Runtime Compatibility
 
-This package is tested across multiple JavaScript runtimes. See
-[COMPATIBILITY.md](./COMPATIBILITY.md) for detailed test results.
+> Last tested: 2025-12-12
 
-| Runtime | Tested Versions | Status |
-| ------- | --------------- | ------ |
-| Deno    | v1.x, v2.x      | ✅     |
-| Node.js | 18, 20, 22      | ✅     |
-| Bun     | latest, canary  | ✅     |
+### Deno
 
-> The compatibility matrix is automatically updated by CI.
+| Version | Platform | Status |
+|---------|----------|--------|
+| v1.x | ubuntu | ✅ |
+| v2.x | macos | ✅ |
+| v2.x | ubuntu | ✅ |
+| v2.x | windows | ✅ |
 
+### Node.js
+
+| Version | Platform | Status |
+|---------|----------|--------|
+| 18 | ubuntu | ✅ |
+| 20 | macos | ✅ |
+| 20 | ubuntu | ✅ |
+| 20 | windows | ✅ |
+| 22 | ubuntu | ✅ |
+
+### Bun
+
+| Version | Platform | Status |
+|---------|----------|--------|
+| canary | ubuntu | ✅ |
+| latest | macos | ✅ |
+| latest | ubuntu | ✅ |
+
+### Quick Status
+
+- Deno: ✅ All tests passing
+- Node.js: ✅ All tests passing
+- Bun: ✅ All tests passing
 <!-- COMPATIBILITY_END -->
 
 ## Support
