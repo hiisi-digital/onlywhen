@@ -35,7 +35,7 @@ import { type TargetConfig, transform } from "./src/transform/mod.ts";
 // Version (synced from deno.json at build time or read dynamically)
 // =============================================================================
 
-const VERSION = "0.5.2";
+const VERSION = "0.5.3";
 
 // =============================================================================
 // Cross-Runtime Compatibility Layer
