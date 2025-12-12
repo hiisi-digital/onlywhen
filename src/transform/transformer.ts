@@ -27,11 +27,27 @@ import {
 import type { TargetConfig, TransformInfo, TransformOptions, TransformResult } from "./types.ts";
 
 // =============================================================================
-// TypeScript Import
+// TypeScript Import & Type Aliases
 // =============================================================================
 
 // Import TypeScript - works in both Deno and Node
 let ts: typeof import("npm:typescript@^5.0");
+
+/** Type alias for TypeScript AST node types to reduce verbosity */
+type TSNode = import("npm:typescript@^5.0").Node;
+type TSExpression = import("npm:typescript@^5.0").Expression;
+type TSSourceFile = import("npm:typescript@^5.0").SourceFile;
+type TSDecorator = import("npm:typescript@^5.0").Decorator;
+type TSPropertyAccessExpression = import("npm:typescript@^5.0").PropertyAccessExpression;
+type TSClassElement = import("npm:typescript@^5.0").ClassElement;
+type TSBlock = import("npm:typescript@^5.0").Block;
+type TSTransformerFactory<T extends TSNode> = import("npm:typescript@^5.0").TransformerFactory<T>;
+
+/** Valid combinator names */
+type CombinatorName = "all" | "any" | "not";
+
+/** Valid namespace names */
+type NamespaceName = "platform" | "runtime" | "arch";
 
 async function ensureTypeScript(): Promise<void> {
   if (!ts) {
@@ -101,7 +117,7 @@ interface AllImports {
  * namespace objects (platform, runtime, arch), and combinator functions.
  */
 function findAllImports(
-  sourceFile: import("npm:typescript@^5.0").SourceFile,
+  sourceFile: TSSourceFile,
   moduleSpecifiers: readonly string[],
 ): AllImports {
   const result: AllImports = {
@@ -184,7 +200,7 @@ function findAllImports(
  * e.g., platform.darwin, runtime.node, arch.x64
  */
 function resolveNamespacePropertyValue(
-  namespaceName: "platform" | "runtime" | "arch",
+  namespaceName: NamespaceName,
   propertyName: string,
   config: TargetConfig,
 ): boolean | undefined {
@@ -236,39 +252,58 @@ function resolvePropertyValue(
 }
 
 /**
+ * Evaluates a combinator with known boolean values.
+ * Centralized logic used by both expression transformation and decorator evaluation.
+ */
+function evaluateCombinatorWithValues(
+  combinator: string,
+  values: boolean[],
+): boolean | undefined {
+  switch (combinator) {
+    case "all":
+      return values.every((v) => v);
+    case "any":
+      return values.some((v) => v);
+    case "not":
+      return values.length === 1 ? !values[0] : undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Extracts boolean values from AST expression nodes.
+ * Returns undefined if any argument is not a boolean literal.
+ */
+function extractBooleanLiterals(
+  args: readonly TSExpression[],
+): boolean[] | undefined {
+  const values: boolean[] = [];
+
+  for (const arg of args) {
+    if (arg.kind === ts.SyntaxKind.TrueKeyword) {
+      values.push(true);
+    } else if (arg.kind === ts.SyntaxKind.FalseKeyword) {
+      values.push(false);
+    } else {
+      return undefined; // Non-literal argument
+    }
+  }
+
+  return values;
+}
+
+/**
  * Evaluates a combinator call if all arguments are boolean literals.
  * Returns undefined if the call cannot be statically evaluated.
  */
 function evaluateCombinator(
   methodName: string,
-  args: readonly import("npm:typescript@^5.0").Expression[],
+  args: readonly TSExpression[],
 ): boolean | undefined {
-  // Extract boolean values from arguments
-  const booleanArgs: boolean[] = [];
-
-  for (const arg of args) {
-    if (arg.kind === ts.SyntaxKind.TrueKeyword) {
-      booleanArgs.push(true);
-    } else if (arg.kind === ts.SyntaxKind.FalseKeyword) {
-      booleanArgs.push(false);
-    } else {
-      // Non-literal argument - cannot evaluate statically
-      return undefined;
-    }
-  }
-
-  // Evaluate the combinator
-  switch (methodName) {
-    case "all":
-      return booleanArgs.every((b) => b);
-    case "any":
-      return booleanArgs.some((b) => b);
-    case "not":
-      if (booleanArgs.length !== 1) return undefined;
-      return !booleanArgs[0];
-    default:
-      return undefined;
-  }
+  const booleanArgs = extractBooleanLiterals(args);
+  if (booleanArgs === undefined) return undefined;
+  return evaluateCombinatorWithValues(methodName, booleanArgs);
 }
 
 /**
@@ -276,7 +311,7 @@ function evaluateCombinator(
  * Returns undefined if the check cannot be statically evaluated.
  */
 function evaluateFeature(
-  arg: import("npm:typescript@^5.0").Expression,
+  arg: TSExpression,
   features: string[] | undefined,
 ): boolean | undefined {
   // Features must be configured to transform
@@ -297,8 +332,8 @@ function evaluateFeature(
  * Gets the line and column of a node in the source file.
  */
 function getNodePosition(
-  node: import("npm:typescript@^5.0").Node,
-  sourceFile: import("npm:typescript@^5.0").SourceFile,
+  node: TSNode,
+  sourceFile: TSSourceFile,
 ): { line: number; column: number } {
   const { line, character } = sourceFile.getLineAndCharacterOfPosition(
     node.getStart(sourceFile),
@@ -309,7 +344,7 @@ function getNodePosition(
 /**
  * Creates a boolean literal node.
  */
-function createBooleanLiteral(value: boolean): import("npm:typescript@^5.0").Expression {
+function createBooleanLiteral(value: boolean): TSExpression {
   return value ? ts.factory.createTrue() : ts.factory.createFalse();
 }
 
@@ -325,7 +360,7 @@ function createTransformerFactory(
   config: TargetConfig,
   moduleSpecifiers: readonly string[],
   transformations: TransformInfo[],
-): import("npm:typescript@^5.0").TransformerFactory<import("npm:typescript@^5.0").SourceFile> {
+): TSTransformerFactory<TSSourceFile> {
   return (context) => {
     return (sourceFile) => {
       // Find all imports from the onlywhen module
@@ -365,7 +400,7 @@ function createTransformerFactory(
       /**
        * Check if an identifier refers to onlywhen.
        */
-      function isOnlywhenIdentifier(node: import("npm:typescript@^5.0").Node): boolean {
+      function isOnlywhenIdentifier(node: TSNode): boolean {
         return ts.isIdentifier(node) && onlywhenNames.has(node.text);
       }
 
@@ -375,8 +410,8 @@ function createTransformerFactory(
        * For named imports, we need: onlywhen
        */
       function getOnlywhenObject(
-        node: import("npm:typescript@^5.0").PropertyAccessExpression,
-      ): import("npm:typescript@^5.0").Expression | undefined {
+        node: TSPropertyAccessExpression,
+      ): TSExpression | undefined {
         const expr = node.expression;
 
         // Direct access: onlywhen.darwin
@@ -405,8 +440,8 @@ function createTransformerFactory(
        * Returns the namespace export name and property name if matched.
        */
       function getNamespaceAccess(
-        node: import("npm:typescript@^5.0").PropertyAccessExpression,
-      ): { namespace: "platform" | "runtime" | "arch"; property: string } | undefined {
+        node: TSPropertyAccessExpression,
+      ): { namespace: NamespaceName; property: string } | undefined {
         const expr = node.expression;
 
         // Direct access: platform.darwin, runtime.node, arch.x64
@@ -425,8 +460,8 @@ function createTransformerFactory(
        * Returns the combinator name if matched.
        */
       function getStandaloneCombinator(
-        callee: import("npm:typescript@^5.0").Expression,
-      ): "all" | "any" | "not" | undefined {
+        callee: TSExpression,
+      ): CombinatorName | undefined {
         if (ts.isIdentifier(callee)) {
           return combinatorLocalToExport.get(callee.text);
         }
@@ -436,18 +471,32 @@ function createTransformerFactory(
       /**
        * Check if a call expression is a standalone feature() call.
        */
-      function isStandaloneFeatureCall(
-        callee: import("npm:typescript@^5.0").Expression,
-      ): boolean {
+      function isStandaloneFeatureCall(callee: TSExpression): boolean {
         return ts.isIdentifier(callee) && callee.text === featureLocalName;
+      }
+
+      /**
+       * Records a transformation for debugging/logging.
+       */
+      function recordTransformation(
+        type: TransformInfo["type"],
+        node: TSNode,
+        replacement: string,
+      ): void {
+        const pos = getNodePosition(node, sourceFile);
+        transformations.push({
+          type,
+          original: node.getText(sourceFile),
+          replacement,
+          line: pos.line,
+          column: pos.column,
+        });
       }
 
       /**
        * Visitor function that transforms nodes.
        */
-      function visitor(
-        node: import("npm:typescript@^5.0").Node,
-      ): import("npm:typescript@^5.0").Node {
+      function visitor(node: TSNode): TSNode {
         // Handle property access: onlywhen.darwin, platform.linux, runtime.node, arch.x64, etc.
         if (ts.isPropertyAccessExpression(node)) {
           // First check for namespace object access: platform.darwin, runtime.node, arch.x64
@@ -459,14 +508,7 @@ function createTransformerFactory(
               config,
             );
             if (value !== undefined) {
-              const pos = getNodePosition(node, sourceFile);
-              transformations.push({
-                type: "property",
-                original: node.getText(sourceFile),
-                replacement: value ? "true" : "false",
-                line: pos.line,
-                column: pos.column,
-              });
+              recordTransformation("property", node, value ? "true" : "false");
               return createBooleanLiteral(value);
             }
           }
@@ -480,14 +522,7 @@ function createTransformerFactory(
             if (KNOWN_BOOLEAN_PROPERTIES.has(propertyName)) {
               const value = resolvePropertyValue(propertyName, config);
               if (value !== undefined) {
-                const pos = getNodePosition(node, sourceFile);
-                transformations.push({
-                  type: "property",
-                  original: node.getText(sourceFile),
-                  replacement: value ? "true" : "false",
-                  line: pos.line,
-                  column: pos.column,
-                });
+                recordTransformation("property", node, value ? "true" : "false");
                 return createBooleanLiteral(value);
               }
             }
@@ -502,14 +537,7 @@ function createTransformerFactory(
           if (featureLocalName && isStandaloneFeatureCall(callee) && node.arguments.length === 1) {
             const value = evaluateFeature(node.arguments[0], config.features);
             if (value !== undefined) {
-              const pos = getNodePosition(node, sourceFile);
-              transformations.push({
-                type: "feature",
-                original: node.getText(sourceFile),
-                replacement: value ? "true" : "false",
-                line: pos.line,
-                column: pos.column,
-              });
+              recordTransformation("feature", node, value ? "true" : "false");
               return createBooleanLiteral(value);
             }
           }
@@ -519,20 +547,13 @@ function createTransformerFactory(
           if (standaloneCombinator) {
             // First, recursively transform arguments
             const transformedArgs = node.arguments.map((arg) =>
-              ts.visitNode(arg, visitor) as import("npm:typescript@^5.0").Expression
+              ts.visitNode(arg, visitor) as TSExpression
             );
 
             // Try to evaluate the combinator
             const value = evaluateCombinator(standaloneCombinator, transformedArgs);
             if (value !== undefined) {
-              const pos = getNodePosition(node, sourceFile);
-              transformations.push({
-                type: "combinator",
-                original: node.getText(sourceFile),
-                replacement: value ? "true" : "false",
-                line: pos.line,
-                column: pos.column,
-              });
+              recordTransformation("combinator", node, value ? "true" : "false");
               return createBooleanLiteral(value);
             }
 
@@ -558,20 +579,13 @@ function createTransformerFactory(
               if (COMBINATOR_METHODS.has(methodName)) {
                 // First, recursively transform arguments
                 const transformedArgs = node.arguments.map((arg) =>
-                  ts.visitNode(arg, visitor) as import("npm:typescript@^5.0").Expression
+                  ts.visitNode(arg, visitor) as TSExpression
                 );
 
                 // Try to evaluate the combinator
                 const value = evaluateCombinator(methodName, transformedArgs);
                 if (value !== undefined) {
-                  const pos = getNodePosition(node, sourceFile);
-                  transformations.push({
-                    type: "combinator",
-                    original: node.getText(sourceFile),
-                    replacement: value ? "true" : "false",
-                    line: pos.line,
-                    column: pos.column,
-                  });
+                  recordTransformation("combinator", node, value ? "true" : "false");
                   return createBooleanLiteral(value);
                 }
 
@@ -591,14 +605,7 @@ function createTransformerFactory(
               if (methodName === FEATURE_METHOD && node.arguments.length === 1) {
                 const value = evaluateFeature(node.arguments[0], config.features);
                 if (value !== undefined) {
-                  const pos = getNodePosition(node, sourceFile);
-                  transformations.push({
-                    type: "feature",
-                    original: node.getText(sourceFile),
-                    replacement: value ? "true" : "false",
-                    line: pos.line,
-                    column: pos.column,
-                  });
+                  recordTransformation("feature", node, value ? "true" : "false");
                   return createBooleanLiteral(value);
                 }
               }
@@ -618,97 +625,13 @@ function createTransformerFactory(
           for (const decorator of decorators) {
             const evalResult = evaluateOnlywhenDecorator(decorator);
             if (evalResult !== undefined) {
-              const pos = getNodePosition(decorator, sourceFile);
-
-              if (evalResult === true) {
-                // Condition is true: remove decorator, keep class unchanged
-                transformations.push({
-                  type: "decorator",
-                  original: decorator.getText(sourceFile),
-                  replacement: "(removed - condition true)",
-                  line: pos.line,
-                  column: pos.column,
-                });
-
-                // Remove this decorator, keep others and the class body
-                const remainingDecorators = decorators.filter((d) => d !== decorator);
-                const newModifiers = [...remainingDecorators, ...otherModifiers];
-
-                // Visit children first, then rebuild
-                const visitedMembers = node.members.map(
-                  (m) => ts.visitNode(m, visitor) as import("npm:typescript@^5.0").ClassElement,
-                );
-
-                return ts.factory.updateClassDeclaration(
-                  node,
-                  newModifiers.length > 0 ? newModifiers : undefined,
-                  node.name,
-                  node.typeParameters,
-                  node.heritageClauses,
-                  visitedMembers,
-                );
-              } else {
-                // Condition is false: remove decorator, replace class with inert stub
-                transformations.push({
-                  type: "decorator",
-                  original: decorator.getText(sourceFile),
-                  replacement: "(removed - class stubbed)",
-                  line: pos.line,
-                  column: pos.column,
-                });
-
-                // Create inert class with no-op methods
-                const inertMembers: import("npm:typescript@^5.0").ClassElement[] = [];
-
-                for (const member of node.members) {
-                  if (ts.isMethodDeclaration(member) && member.name) {
-                    // Replace method with no-op
-                    inertMembers.push(
-                      ts.factory.createMethodDeclaration(
-                        member.modifiers?.filter((m) => !ts.isDecorator(m)),
-                        member.asteriskToken,
-                        member.name,
-                        member.questionToken,
-                        member.typeParameters,
-                        member.parameters,
-                        member.type,
-                        ts.factory.createBlock([], false), // Empty body
-                      ),
-                    );
-                  } else if (ts.isConstructorDeclaration(member)) {
-                    // Keep constructor but make it empty
-                    inertMembers.push(
-                      ts.factory.createConstructorDeclaration(
-                        member.modifiers?.filter((m) => !ts.isDecorator(m)),
-                        member.parameters,
-                        ts.factory.createBlock([], false),
-                      ),
-                    );
-                  } else if (ts.isPropertyDeclaration(member)) {
-                    // Keep property declarations but without initializers
-                    inertMembers.push(
-                      ts.factory.createPropertyDeclaration(
-                        member.modifiers?.filter((m) => !ts.isDecorator(m)),
-                        member.name,
-                        member.questionToken || member.exclamationToken,
-                        member.type,
-                        undefined, // No initializer
-                      ),
-                    );
-                  }
-                  // Skip other members (getters, setters, etc.) or keep as-is
-                }
-
-                // Remove all decorators, keep other modifiers
-                return ts.factory.updateClassDeclaration(
-                  node,
-                  otherModifiers.length > 0 ? otherModifiers : undefined,
-                  node.name,
-                  node.typeParameters,
-                  node.heritageClauses,
-                  inertMembers,
-                );
-              }
+              return transformClassWithDecorator(
+                node,
+                decorator,
+                decorators,
+                otherModifiers,
+                evalResult,
+              );
             }
           }
         }
@@ -721,60 +644,13 @@ function createTransformerFactory(
           for (const decorator of decorators) {
             const evalResult = evaluateOnlywhenDecorator(decorator);
             if (evalResult !== undefined) {
-              const pos = getNodePosition(decorator, sourceFile);
-
-              if (evalResult === true) {
-                // Condition is true: remove decorator, keep method unchanged
-                transformations.push({
-                  type: "decorator",
-                  original: decorator.getText(sourceFile),
-                  replacement: "(removed - condition true)",
-                  line: pos.line,
-                  column: pos.column,
-                });
-
-                // Remove this decorator, keep others and the method body
-                const remainingDecorators = decorators.filter((d) => d !== decorator);
-                const newModifiers = [...remainingDecorators, ...otherModifiers];
-
-                // Visit body
-                const visitedBody = node.body
-                  ? (ts.visitNode(node.body, visitor) as import("npm:typescript@^5.0").Block)
-                  : undefined;
-
-                return ts.factory.updateMethodDeclaration(
-                  node,
-                  newModifiers.length > 0 ? newModifiers : undefined,
-                  node.asteriskToken,
-                  node.name,
-                  node.questionToken,
-                  node.typeParameters,
-                  node.parameters,
-                  node.type,
-                  visitedBody,
-                );
-              } else {
-                // Condition is false: remove decorator, replace with no-op
-                transformations.push({
-                  type: "decorator",
-                  original: decorator.getText(sourceFile),
-                  replacement: "(removed - method stubbed)",
-                  line: pos.line,
-                  column: pos.column,
-                });
-
-                return ts.factory.updateMethodDeclaration(
-                  node,
-                  otherModifiers.length > 0 ? otherModifiers : undefined,
-                  node.asteriskToken,
-                  node.name,
-                  node.questionToken,
-                  node.typeParameters,
-                  node.parameters,
-                  node.type,
-                  ts.factory.createBlock([], false), // Empty body
-                );
-              }
+              return transformMethodWithDecorator(
+                node,
+                decorator,
+                decorators,
+                otherModifiers,
+                evalResult,
+              );
             }
           }
         }
@@ -783,13 +659,158 @@ function createTransformerFactory(
         return ts.visitEachChild(node, visitor, context);
       }
 
+      // =====================================================================
+      // Decorator Transformation Helpers
+      // =====================================================================
+
+      /**
+       * Transform a class declaration with an evaluable onlywhen decorator.
+       */
+      function transformClassWithDecorator(
+        node: import("npm:typescript@^5.0").ClassDeclaration,
+        decorator: TSDecorator,
+        allDecorators: TSDecorator[],
+        otherModifiers: import("npm:typescript@^5.0").ModifierLike[],
+        conditionValue: boolean,
+      ): import("npm:typescript@^5.0").ClassDeclaration {
+        if (conditionValue) {
+          // Condition is true: remove decorator, keep class unchanged
+          recordTransformation("decorator", decorator, "(removed - condition true)");
+
+          const remainingDecorators = allDecorators.filter((d) => d !== decorator);
+          const newModifiers = [...remainingDecorators, ...otherModifiers];
+          const visitedMembers = node.members.map(
+            (m) => ts.visitNode(m, visitor) as TSClassElement,
+          );
+
+          return ts.factory.updateClassDeclaration(
+            node,
+            newModifiers.length > 0 ? newModifiers : undefined,
+            node.name,
+            node.typeParameters,
+            node.heritageClauses,
+            visitedMembers,
+          );
+        }
+
+        // Condition is false: remove decorator, replace class with inert stub
+        recordTransformation("decorator", decorator, "(removed - class stubbed)");
+
+        const inertMembers = createInertClassMembers(node.members);
+
+        return ts.factory.updateClassDeclaration(
+          node,
+          otherModifiers.length > 0 ? otherModifiers : undefined,
+          node.name,
+          node.typeParameters,
+          node.heritageClauses,
+          inertMembers,
+        );
+      }
+
+      /**
+       * Transform a method declaration with an evaluable onlywhen decorator.
+       */
+      function transformMethodWithDecorator(
+        node: import("npm:typescript@^5.0").MethodDeclaration,
+        decorator: TSDecorator,
+        allDecorators: TSDecorator[],
+        otherModifiers: import("npm:typescript@^5.0").ModifierLike[],
+        conditionValue: boolean,
+      ): import("npm:typescript@^5.0").MethodDeclaration {
+        if (conditionValue) {
+          // Condition is true: remove decorator, keep method unchanged
+          recordTransformation("decorator", decorator, "(removed - condition true)");
+
+          const remainingDecorators = allDecorators.filter((d) => d !== decorator);
+          const newModifiers = [...remainingDecorators, ...otherModifiers];
+          const visitedBody = node.body ? (ts.visitNode(node.body, visitor) as TSBlock) : undefined;
+
+          return ts.factory.updateMethodDeclaration(
+            node,
+            newModifiers.length > 0 ? newModifiers : undefined,
+            node.asteriskToken,
+            node.name,
+            node.questionToken,
+            node.typeParameters,
+            node.parameters,
+            node.type,
+            visitedBody,
+          );
+        }
+
+        // Condition is false: remove decorator, replace with no-op
+        recordTransformation("decorator", decorator, "(removed - method stubbed)");
+
+        return ts.factory.updateMethodDeclaration(
+          node,
+          otherModifiers.length > 0 ? otherModifiers : undefined,
+          node.asteriskToken,
+          node.name,
+          node.questionToken,
+          node.typeParameters,
+          node.parameters,
+          node.type,
+          ts.factory.createBlock([], false),
+        );
+      }
+
+      /**
+       * Creates inert (stubbed) class members for a disabled class.
+       */
+      function createInertClassMembers(
+        members: import("npm:typescript@^5.0").NodeArray<TSClassElement>,
+      ): TSClassElement[] {
+        const inertMembers: TSClassElement[] = [];
+
+        for (const member of members) {
+          if (ts.isMethodDeclaration(member) && member.name) {
+            inertMembers.push(
+              ts.factory.createMethodDeclaration(
+                member.modifiers?.filter((m) => !ts.isDecorator(m)),
+                member.asteriskToken,
+                member.name,
+                member.questionToken,
+                member.typeParameters,
+                member.parameters,
+                member.type,
+                ts.factory.createBlock([], false),
+              ),
+            );
+          } else if (ts.isConstructorDeclaration(member)) {
+            inertMembers.push(
+              ts.factory.createConstructorDeclaration(
+                member.modifiers?.filter((m) => !ts.isDecorator(m)),
+                member.parameters,
+                ts.factory.createBlock([], false),
+              ),
+            );
+          } else if (ts.isPropertyDeclaration(member)) {
+            inertMembers.push(
+              ts.factory.createPropertyDeclaration(
+                member.modifiers?.filter((m) => !ts.isDecorator(m)),
+                member.name,
+                member.questionToken || member.exclamationToken,
+                member.type,
+                undefined,
+              ),
+            );
+          }
+          // Getters, setters, and other members are omitted from inert class
+        }
+
+        return inertMembers;
+      }
+
+      // =====================================================================
+      // Expression Evaluation Helpers
+      // =====================================================================
+
       /**
        * Evaluate an @onlywhen(...) decorator to a boolean if possible.
        * Returns true/false if evaluable, undefined otherwise.
        */
-      function evaluateOnlywhenDecorator(
-        decorator: import("npm:typescript@^5.0").Decorator,
-      ): boolean | undefined {
+      function evaluateOnlywhenDecorator(decorator: TSDecorator): boolean | undefined {
         const expr = decorator.expression;
 
         // Must be a call expression: @onlywhen(...)
@@ -819,9 +840,7 @@ function createTransformerFactory(
        * Recursively evaluate an expression to a boolean value.
        * Returns the boolean value if fully evaluable, undefined otherwise.
        */
-      function evaluateExpressionToBoolean(
-        node: import("npm:typescript@^5.0").Expression,
-      ): boolean | undefined {
+      function evaluateExpressionToBoolean(node: TSExpression): boolean | undefined {
         // Boolean literals
         if (node.kind === ts.SyntaxKind.TrueKeyword) {
           return true;
@@ -862,10 +881,7 @@ function createTransformerFactory(
           if (standaloneCombinator) {
             const argValues = node.arguments.map((a) => evaluateExpressionToBoolean(a));
             if (argValues.every((v) => v !== undefined)) {
-              return evaluateCombinatorValues(
-                standaloneCombinator,
-                argValues as boolean[],
-              );
+              return evaluateCombinatorWithValues(standaloneCombinator, argValues as boolean[]);
             }
           }
 
@@ -878,7 +894,7 @@ function createTransformerFactory(
               if (COMBINATOR_METHODS.has(methodName)) {
                 const argValues = node.arguments.map((a) => evaluateExpressionToBoolean(a));
                 if (argValues.every((v) => v !== undefined)) {
-                  return evaluateCombinatorValues(methodName, argValues as boolean[]);
+                  return evaluateCombinatorWithValues(methodName, argValues as boolean[]);
                 }
               }
 
@@ -892,26 +908,7 @@ function createTransformerFactory(
         return undefined;
       }
 
-      /**
-       * Evaluate combinator with known boolean values.
-       */
-      function evaluateCombinatorValues(
-        combinator: string,
-        values: boolean[],
-      ): boolean | undefined {
-        switch (combinator) {
-          case "all":
-            return values.every((v) => v);
-          case "any":
-            return values.some((v) => v);
-          case "not":
-            return values.length === 1 ? !values[0] : undefined;
-          default:
-            return undefined;
-        }
-      }
-
-      return ts.visitNode(sourceFile, visitor) as import("npm:typescript@^5.0").SourceFile;
+      return ts.visitNode(sourceFile, visitor) as TSSourceFile;
     };
   };
 }
