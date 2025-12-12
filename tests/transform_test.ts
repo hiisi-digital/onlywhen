@@ -446,11 +446,17 @@ const notMac = not(platform.darwin);`;
     const source = `import { onlywhen, platform, arch, all } from "@hiisi/onlywhen";
 
 @onlywhen(all(platform.linux, arch.x64))
-class LinuxX64Only {}`;
+class LinuxX64Only {
+  method() { return "linux"; }
+}`;
 
     const result = await transform(source, { platform: "darwin", arch: "arm64" });
 
-    assertStringIncludes(result.code, "@onlywhen(false)");
+    // Decorator should be stripped and class stubbed (optimization)
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class LinuxX64Only");
+    // Method body should be empty (stubbed)
+    assertEquals(result.code.includes('return "linux"'), false);
   });
 
   it("should handle aliased combinator imports", async () => {
@@ -486,5 +492,172 @@ const x = onlywhen.darwin;`;
     const result = await transform(source, { platform: "darwin" });
 
     assertEquals(result.transformations[0].original, "onlywhen.darwin");
+  });
+});
+
+// =============================================================================
+// Decorator Optimization Tests
+// =============================================================================
+
+describe("Transform Decorator Optimization", () => {
+  it("should remove decorator and keep class when condition is true", async () => {
+    const source = `import { onlywhen } from "@hiisi/onlywhen";
+@onlywhen(onlywhen.darwin)
+class MacOnly {
+  doSomething() { return 42; }
+}`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    // Decorator should be removed
+    assertEquals(result.code.includes("@onlywhen"), false);
+    // Class should still exist with its method
+    assertStringIncludes(result.code, "class MacOnly");
+    assertStringIncludes(result.code, "doSomething");
+    // Should have a decorator transformation
+    const decoratorTransform = result.transformations.find((t) => t.type === "decorator");
+    assertEquals(decoratorTransform !== undefined, true);
+  });
+
+  it("should remove decorator and stub class when condition is false", async () => {
+    const source = `import { onlywhen } from "@hiisi/onlywhen";
+@onlywhen(onlywhen.darwin)
+class MacOnly {
+  doSomething() { return 42; }
+}`;
+
+    const result = await transform(source, { platform: "linux" });
+
+    // Decorator should be removed
+    assertEquals(result.code.includes("@onlywhen"), false);
+    // Class should still exist but methods should be stubbed (empty body)
+    assertStringIncludes(result.code, "class MacOnly");
+    assertStringIncludes(result.code, "doSomething");
+    // Method body should be empty (no "return 42")
+    assertEquals(result.code.includes("return 42"), false);
+  });
+
+  it("should remove decorator and keep method when condition is true", async () => {
+    const source = `import { onlywhen } from "@hiisi/onlywhen";
+class App {
+  @onlywhen(onlywhen.node)
+  nodeMethod() { return "node"; }
+}`;
+
+    const result = await transform(source, { runtime: "node" });
+
+    // Decorator should be removed
+    assertEquals(result.code.includes("@onlywhen"), false);
+    // Method should still have its body
+    assertStringIncludes(result.code, "nodeMethod");
+    assertStringIncludes(result.code, 'return "node"');
+  });
+
+  it("should remove decorator and stub method when condition is false", async () => {
+    const source = `import { onlywhen } from "@hiisi/onlywhen";
+class App {
+  @onlywhen(onlywhen.node)
+  nodeMethod() { return "node"; }
+}`;
+
+    const result = await transform(source, { runtime: "deno" });
+
+    // Decorator should be removed
+    assertEquals(result.code.includes("@onlywhen"), false);
+    // Method should exist but be stubbed
+    assertStringIncludes(result.code, "nodeMethod");
+    assertEquals(result.code.includes('return "node"'), false);
+  });
+
+  it("should handle decorator with namespace condition", async () => {
+    const source = `import { onlywhen, platform } from "@hiisi/onlywhen";
+@onlywhen(platform.darwin)
+class MacFeatures {
+  feature() { return "mac"; }
+}`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class MacFeatures");
+    assertStringIncludes(result.code, 'return "mac"');
+  });
+
+  it("should handle decorator with combinator condition", async () => {
+    const source = `import { onlywhen, platform, arch, all } from "@hiisi/onlywhen";
+@onlywhen(all(platform.darwin, arch.arm64))
+class M1Only {
+  method() { return "m1"; }
+}`;
+
+    const result = await transform(source, { platform: "darwin", arch: "arm64" });
+
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class M1Only");
+    assertStringIncludes(result.code, 'return "m1"');
+  });
+
+  it("should stub class when combinator condition is false", async () => {
+    const source = `import { onlywhen, platform, arch, all } from "@hiisi/onlywhen";
+@onlywhen(all(platform.darwin, arch.arm64))
+class M1Only {
+  method() { return "m1"; }
+}`;
+
+    const result = await transform(source, { platform: "darwin", arch: "x64" });
+
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class M1Only");
+    assertEquals(result.code.includes('return "m1"'), false);
+  });
+
+  it("should handle decorator with feature condition", async () => {
+    const source = `import { onlywhen, feature } from "@hiisi/onlywhen";
+@onlywhen(feature("experimental"))
+class ExperimentalFeature {
+  run() { return "experimental"; }
+}`;
+
+    const result = await transform(source, { features: ["experimental"] });
+
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class ExperimentalFeature");
+    assertStringIncludes(result.code, 'return "experimental"');
+  });
+
+  it("should preserve constructor in stubbed class", async () => {
+    const source = `import { onlywhen } from "@hiisi/onlywhen";
+@onlywhen(onlywhen.darwin)
+class WithConstructor {
+  constructor(private name: string) {
+    console.log(name);
+  }
+  greet() { return this.name; }
+}`;
+
+    const result = await transform(source, { platform: "linux" });
+
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class WithConstructor");
+    assertStringIncludes(result.code, "constructor");
+    // Constructor body should be empty
+    assertEquals(result.code.includes("console.log"), false);
+  });
+
+  it("should preserve properties in stubbed class without initializers", async () => {
+    const source = `import { onlywhen } from "@hiisi/onlywhen";
+@onlywhen(onlywhen.darwin)
+class WithProperty {
+  value: number = 42;
+  method() { return this.value; }
+}`;
+
+    const result = await transform(source, { platform: "linux" });
+
+    assertEquals(result.code.includes("@onlywhen"), false);
+    assertStringIncludes(result.code, "class WithProperty");
+    assertStringIncludes(result.code, "value");
+    // Property initializer should be removed
+    assertEquals(result.code.includes("= 42"), false);
   });
 });

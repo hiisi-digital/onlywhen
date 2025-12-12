@@ -1,6 +1,6 @@
 {
   "name": "@hiisi/onlywhen",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "license": "MPL-2.0",
   "exports": {
     ".": "./mod.ts",
