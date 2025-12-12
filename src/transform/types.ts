@@ -151,7 +151,7 @@ export interface TransformInfo {
   /**
    * Type of transformation.
    */
-  type: "property" | "combinator" | "feature";
+  type: "property" | "combinator" | "feature" | "decorator";
 
   /**
    * Original expression (e.g., "onlywhen.darwin").
@@ -159,9 +159,9 @@ export interface TransformInfo {
   original: string;
 
   /**
-   * Replacement value.
+   * Replacement value or description.
    */
-  replacement: "true" | "false";
+  replacement: string;
 
   /**
    * Line number in source (1-indexed).

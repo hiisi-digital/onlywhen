@@ -606,8 +606,309 @@ function createTransformerFactory(
           }
         }
 
+        // =================================================================
+        // Decorator Optimization: Strip decorators and transform bodies
+        // =================================================================
+
+        // Handle class declarations with decorators
+        if (ts.isClassDeclaration(node) && node.modifiers) {
+          const decorators = node.modifiers.filter(ts.isDecorator);
+          const otherModifiers = node.modifiers.filter((m) => !ts.isDecorator(m));
+
+          for (const decorator of decorators) {
+            const evalResult = evaluateOnlywhenDecorator(decorator);
+            if (evalResult !== undefined) {
+              const pos = getNodePosition(decorator, sourceFile);
+
+              if (evalResult === true) {
+                // Condition is true: remove decorator, keep class unchanged
+                transformations.push({
+                  type: "decorator",
+                  original: decorator.getText(sourceFile),
+                  replacement: "(removed - condition true)",
+                  line: pos.line,
+                  column: pos.column,
+                });
+
+                // Remove this decorator, keep others and the class body
+                const remainingDecorators = decorators.filter((d) => d !== decorator);
+                const newModifiers = [...remainingDecorators, ...otherModifiers];
+
+                // Visit children first, then rebuild
+                const visitedMembers = node.members.map(
+                  (m) => ts.visitNode(m, visitor) as import("npm:typescript@^5.0").ClassElement,
+                );
+
+                return ts.factory.updateClassDeclaration(
+                  node,
+                  newModifiers.length > 0 ? newModifiers : undefined,
+                  node.name,
+                  node.typeParameters,
+                  node.heritageClauses,
+                  visitedMembers,
+                );
+              } else {
+                // Condition is false: remove decorator, replace class with inert stub
+                transformations.push({
+                  type: "decorator",
+                  original: decorator.getText(sourceFile),
+                  replacement: "(removed - class stubbed)",
+                  line: pos.line,
+                  column: pos.column,
+                });
+
+                // Create inert class with no-op methods
+                const inertMembers: import("npm:typescript@^5.0").ClassElement[] = [];
+
+                for (const member of node.members) {
+                  if (ts.isMethodDeclaration(member) && member.name) {
+                    // Replace method with no-op
+                    inertMembers.push(
+                      ts.factory.createMethodDeclaration(
+                        member.modifiers?.filter((m) => !ts.isDecorator(m)),
+                        member.asteriskToken,
+                        member.name,
+                        member.questionToken,
+                        member.typeParameters,
+                        member.parameters,
+                        member.type,
+                        ts.factory.createBlock([], false), // Empty body
+                      ),
+                    );
+                  } else if (ts.isConstructorDeclaration(member)) {
+                    // Keep constructor but make it empty
+                    inertMembers.push(
+                      ts.factory.createConstructorDeclaration(
+                        member.modifiers?.filter((m) => !ts.isDecorator(m)),
+                        member.parameters,
+                        ts.factory.createBlock([], false),
+                      ),
+                    );
+                  } else if (ts.isPropertyDeclaration(member)) {
+                    // Keep property declarations but without initializers
+                    inertMembers.push(
+                      ts.factory.createPropertyDeclaration(
+                        member.modifiers?.filter((m) => !ts.isDecorator(m)),
+                        member.name,
+                        member.questionToken || member.exclamationToken,
+                        member.type,
+                        undefined, // No initializer
+                      ),
+                    );
+                  }
+                  // Skip other members (getters, setters, etc.) or keep as-is
+                }
+
+                // Remove all decorators, keep other modifiers
+                return ts.factory.updateClassDeclaration(
+                  node,
+                  otherModifiers.length > 0 ? otherModifiers : undefined,
+                  node.name,
+                  node.typeParameters,
+                  node.heritageClauses,
+                  inertMembers,
+                );
+              }
+            }
+          }
+        }
+
+        // Handle method declarations with decorators
+        if (ts.isMethodDeclaration(node) && node.modifiers) {
+          const decorators = node.modifiers.filter(ts.isDecorator);
+          const otherModifiers = node.modifiers.filter((m) => !ts.isDecorator(m));
+
+          for (const decorator of decorators) {
+            const evalResult = evaluateOnlywhenDecorator(decorator);
+            if (evalResult !== undefined) {
+              const pos = getNodePosition(decorator, sourceFile);
+
+              if (evalResult === true) {
+                // Condition is true: remove decorator, keep method unchanged
+                transformations.push({
+                  type: "decorator",
+                  original: decorator.getText(sourceFile),
+                  replacement: "(removed - condition true)",
+                  line: pos.line,
+                  column: pos.column,
+                });
+
+                // Remove this decorator, keep others and the method body
+                const remainingDecorators = decorators.filter((d) => d !== decorator);
+                const newModifiers = [...remainingDecorators, ...otherModifiers];
+
+                // Visit body
+                const visitedBody = node.body
+                  ? (ts.visitNode(node.body, visitor) as import("npm:typescript@^5.0").Block)
+                  : undefined;
+
+                return ts.factory.updateMethodDeclaration(
+                  node,
+                  newModifiers.length > 0 ? newModifiers : undefined,
+                  node.asteriskToken,
+                  node.name,
+                  node.questionToken,
+                  node.typeParameters,
+                  node.parameters,
+                  node.type,
+                  visitedBody,
+                );
+              } else {
+                // Condition is false: remove decorator, replace with no-op
+                transformations.push({
+                  type: "decorator",
+                  original: decorator.getText(sourceFile),
+                  replacement: "(removed - method stubbed)",
+                  line: pos.line,
+                  column: pos.column,
+                });
+
+                return ts.factory.updateMethodDeclaration(
+                  node,
+                  otherModifiers.length > 0 ? otherModifiers : undefined,
+                  node.asteriskToken,
+                  node.name,
+                  node.questionToken,
+                  node.typeParameters,
+                  node.parameters,
+                  node.type,
+                  ts.factory.createBlock([], false), // Empty body
+                );
+              }
+            }
+          }
+        }
+
         // Continue traversing
         return ts.visitEachChild(node, visitor, context);
+      }
+
+      /**
+       * Evaluate an @onlywhen(...) decorator to a boolean if possible.
+       * Returns true/false if evaluable, undefined otherwise.
+       */
+      function evaluateOnlywhenDecorator(
+        decorator: import("npm:typescript@^5.0").Decorator,
+      ): boolean | undefined {
+        const expr = decorator.expression;
+
+        // Must be a call expression: @onlywhen(...)
+        if (!ts.isCallExpression(expr)) {
+          return undefined;
+        }
+
+        const callee = expr.expression;
+
+        // Check if callee is onlywhen identifier
+        if (!isOnlywhenIdentifier(callee)) {
+          return undefined;
+        }
+
+        // Must have exactly one argument
+        if (expr.arguments.length !== 1) {
+          return undefined;
+        }
+
+        const arg = expr.arguments[0];
+
+        // Try to evaluate the argument to a boolean
+        return evaluateExpressionToBoolean(arg);
+      }
+
+      /**
+       * Recursively evaluate an expression to a boolean value.
+       * Returns the boolean value if fully evaluable, undefined otherwise.
+       */
+      function evaluateExpressionToBoolean(
+        node: import("npm:typescript@^5.0").Expression,
+      ): boolean | undefined {
+        // Boolean literals
+        if (node.kind === ts.SyntaxKind.TrueKeyword) {
+          return true;
+        }
+        if (node.kind === ts.SyntaxKind.FalseKeyword) {
+          return false;
+        }
+
+        // Property access: onlywhen.darwin, platform.linux, etc.
+        if (ts.isPropertyAccessExpression(node)) {
+          // Check namespace access first: platform.darwin, runtime.node, arch.x64
+          const nsAccess = getNamespaceAccess(node);
+          if (nsAccess) {
+            return resolveNamespacePropertyValue(nsAccess.namespace, nsAccess.property, config);
+          }
+
+          // Check onlywhen object access: onlywhen.darwin
+          const onlywhenObj = getOnlywhenObject(node);
+          if (onlywhenObj) {
+            const propertyName = node.name.text;
+            if (KNOWN_BOOLEAN_PROPERTIES.has(propertyName)) {
+              return resolvePropertyValue(propertyName, config);
+            }
+          }
+        }
+
+        // Call expressions: all(...), any(...), not(...), feature(...)
+        if (ts.isCallExpression(node)) {
+          const callee = node.expression;
+
+          // Standalone feature() call
+          if (featureLocalName && isStandaloneFeatureCall(callee) && node.arguments.length === 1) {
+            return evaluateFeature(node.arguments[0], config.features);
+          }
+
+          // Standalone combinators: all(...), any(...), not(...)
+          const standaloneCombinator = getStandaloneCombinator(callee);
+          if (standaloneCombinator) {
+            const argValues = node.arguments.map((a) => evaluateExpressionToBoolean(a));
+            if (argValues.every((v) => v !== undefined)) {
+              return evaluateCombinatorValues(
+                standaloneCombinator,
+                argValues as boolean[],
+              );
+            }
+          }
+
+          // onlywhen.all(...), onlywhen.any(...), etc.
+          if (ts.isPropertyAccessExpression(callee)) {
+            const onlywhenObj = getOnlywhenObject(callee);
+            if (onlywhenObj) {
+              const methodName = callee.name.text;
+
+              if (COMBINATOR_METHODS.has(methodName)) {
+                const argValues = node.arguments.map((a) => evaluateExpressionToBoolean(a));
+                if (argValues.every((v) => v !== undefined)) {
+                  return evaluateCombinatorValues(methodName, argValues as boolean[]);
+                }
+              }
+
+              if (methodName === FEATURE_METHOD && node.arguments.length === 1) {
+                return evaluateFeature(node.arguments[0], config.features);
+              }
+            }
+          }
+        }
+
+        return undefined;
+      }
+
+      /**
+       * Evaluate combinator with known boolean values.
+       */
+      function evaluateCombinatorValues(
+        combinator: string,
+        values: boolean[],
+      ): boolean | undefined {
+        switch (combinator) {
+          case "all":
+            return values.every((v) => v);
+          case "any":
+            return values.some((v) => v);
+          case "not":
+            return values.length === 1 ? !values[0] : undefined;
+          default:
+            return undefined;
+        }
       }
 
       return ts.visitNode(sourceFile, visitor) as import("npm:typescript@^5.0").SourceFile;

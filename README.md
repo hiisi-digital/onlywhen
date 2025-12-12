@@ -409,7 +409,53 @@ for (const file of files) {
 Properties not in your config stay as runtime checks. This lets you partially
 bake values while keeping others dynamic.
 
+### Decorator Optimization
+
+When decorators can be fully evaluated at build time, the transformer goes
+further than just replacing the condition:
+
+- **Condition is `true`**: The decorator is stripped entirely, keeping the
+  class/method unchanged. No runtime overhead.
+
+- **Condition is `false`**: The decorator is stripped and the class/method body
+  is replaced with empty stubs. This eliminates:
+  - Decorator function call overhead
+  - Inert class creation logic
+  - Prototype iteration at runtime
+  - Bundle size (the original method bodies are removed)
+
+```typescript
+// Before transform (targeting linux)
+@onlywhen(platform.darwin)
+class MacFeature {
+  expensiveMethod() {/* lots of code */}
+}
+
+// After transform
+class MacFeature {
+  expensiveMethod() {} // Empty stub, no decorator overhead
+}
+```
+
+This optimization means the JIT compiler sees cleaner code with fewer
+indirection points, potentially improving runtime performance beyond just
+the decorator overhead savings.
+
 <!-- COMPATIBILITY_START -->
+
+## Runtime Compatibility
+
+This package is tested across multiple JavaScript runtimes. See
+[COMPATIBILITY.md](./COMPATIBILITY.md) for detailed test results.
+
+| Runtime | Tested Versions | Status |
+| ------- | --------------- | ------ |
+| Deno    | v1.x, v2.x      | ✅     |
+| Node.js | 18, 20, 22      | ✅     |
+| Bun     | latest, canary  | ✅     |
+
+> The compatibility matrix is automatically updated by CI.
+
 <!-- COMPATIBILITY_END -->
 
 ## Support
