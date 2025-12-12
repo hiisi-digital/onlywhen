@@ -262,66 +262,81 @@ jobs:
             }
           };
           
-          // Group by runtime
-          const deno: Record<string, string> = {};
-          const node: Record<string, string> = {};
-          const bun: Record<string, string> = {};
+          // Group by runtime, aggregating versions across CI runners
+          // We care about runtime versions, not CI runner OS (the package is cross-platform)
+          const denoVersions = new Map<string, { pass: number; fail: number }>();
+          const nodeVersions = new Map<string, { pass: number; fail: number }>();
+          const bunVersions = new Map<string, { pass: number; fail: number }>();
           
           for (const [key, data] of Object.entries(results) as [string, any][]) {
-            const label = `${data.version} (${data.os.replace("-latest", "")})`;
+            const version = data.version;
+            const passed = data.status === "pass";
+            
+            let versionMap: Map<string, { pass: number; fail: number }>;
             switch (data.runtime) {
               case "deno":
-                deno[label] = data.status;
+                versionMap = denoVersions;
                 break;
               case "node":
-                node[label] = data.status;
+                versionMap = nodeVersions;
                 break;
               case "bun":
-                bun[label] = data.status;
+                versionMap = bunVersions;
                 break;
+              default:
+                continue;
             }
+            
+            const current = versionMap.get(version) || { pass: 0, fail: 0 };
+            if (passed) {
+              current.pass++;
+            } else {
+              current.fail++;
+            }
+            versionMap.set(version, current);
           }
           
-          // Generate markdown table
+          // Helper to render version status
+          const versionStatus = (stats: { pass: number; fail: number }) => {
+            if (stats.fail === 0) return "✅";
+            if (stats.pass === 0) return "❌";
+            return "⚠️"; // Mixed results
+          };
+          
+          // Generate markdown
           let md = `## Runtime Compatibility\n\n`;
           md += `> Last tested: ${new Date().toISOString().split("T")[0]}\n\n`;
+          md += `These tests verify that the package works correctly in each runtime environment.\n`;
+          md += `Runtime detection (\`runtime.node\`, \`runtime.deno\`, etc.) is tested, along with\n`;
+          md += `API functionality. Platform detection is cross-platform by design.\n\n`;
           
-          md += `### Deno\n\n`;
-          md += `| Version | Platform | Status |\n`;
-          md += `|---------|----------|--------|\n`;
-          for (const [label, status] of Object.entries(deno).sort()) {
-            const [version, platform] = label.match(/^([^\s]+)\s+\(([^)]+)\)$/)?.slice(1) || [label, ""];
-            md += `| ${version} | ${platform} | ${emoji(status)} |\n`;
+          md += `| Runtime | Version | Status |\n`;
+          md += `|---------|---------|--------|\n`;
+          
+          // Sort and output Deno versions
+          for (const [version, stats] of [...denoVersions.entries()].sort()) {
+            md += `| Deno | ${version} | ${versionStatus(stats)} |\n`;
           }
           
-          md += `\n### Node.js\n\n`;
-          md += `| Version | Platform | Status |\n`;
-          md += `|---------|----------|--------|\n`;
-          for (const [label, status] of Object.entries(node).sort()) {
-            const [version, platform] = label.match(/^([^\s]+)\s+\(([^)]+)\)$/)?.slice(1) || [label, ""];
-            md += `| ${version} | ${platform} | ${emoji(status)} |\n`;
+          // Sort and output Node versions
+          for (const [version, stats] of [...nodeVersions.entries()].sort((a, b) => Number(a[0]) - Number(b[0]))) {
+            md += `| Node.js | ${version} | ${versionStatus(stats)} |\n`;
           }
           
-          md += `\n### Bun\n\n`;
-          md += `| Version | Platform | Status |\n`;
-          md += `|---------|----------|--------|\n`;
-          for (const [label, status] of Object.entries(bun).sort()) {
-            const [version, platform] = label.match(/^([^\s]+)\s+\(([^)]+)\)$/)?.slice(1) || [label, ""];
-            md += `| ${version} | ${platform} | ${emoji(status)} |\n`;
+          // Sort and output Bun versions
+          for (const [version, stats] of [...bunVersions.entries()].sort()) {
+            md += `| Bun | ${version} | ${versionStatus(stats)} |\n`;
           }
           
-          // Summary badges line
-          const allPass = Object.values(results).every((r: any) => r.status === "pass");
-          const denoPass = Object.values(deno).every(s => s === "pass");
-          const nodePass = Object.values(node).every(s => s === "pass");
-          const bunPass = Object.values(bun).every(s => s === "pass");
+          // Summary
+          const denoPass = [...denoVersions.values()].every(s => s.fail === 0);
+          const nodePass = [...nodeVersions.values()].every(s => s.fail === 0);
+          const bunPass = [...bunVersions.values()].every(s => s.fail === 0);
           
-          let badges = `\n### Quick Status\n\n`;
-          badges += `- Deno: ${denoPass ? "✅ All tests passing" : "⚠️ Some tests failing"}\n`;
-          badges += `- Node.js: ${nodePass ? "✅ All tests passing" : "⚠️ Some tests failing"}\n`;
-          badges += `- Bun: ${bunPass ? "✅ All tests passing" : "⚠️ Some tests failing"}\n`;
-          
-          md += badges;
+          md += `\n### Summary\n\n`;
+          md += `- **Deno**: ${denoPass ? "✅ All versions passing" : "⚠️ Some versions failing"}\n`;
+          md += `- **Node.js**: ${nodePass ? "✅ All versions passing" : "⚠️ Some versions failing"}\n`;
+          md += `- **Bun**: ${bunPass ? "✅ All versions passing" : "⚠️ Some versions failing"}\n`;
           
           console.log(md);
           await Deno.writeTextFile("COMPATIBILITY.md", md);
