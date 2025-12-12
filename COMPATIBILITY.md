@@ -5,29 +5,29 @@
 ### Deno
 
 | Version | Platform | Status |
-|---------|----------|--------|
-| v1.x | ubuntu | ✅ |
-| v2.x | macos | ✅ |
-| v2.x | ubuntu | ✅ |
-| v2.x | windows | ✅ |
+| ------- | -------- | ------ |
+| v1.x    | ubuntu   | ✅     |
+| v2.x    | macos    | ✅     |
+| v2.x    | ubuntu   | ✅     |
+| v2.x    | windows  | ✅     |
 
 ### Node.js
 
 | Version | Platform | Status |
-|---------|----------|--------|
-| 18 | ubuntu | ✅ |
-| 20 | macos | ✅ |
-| 20 | ubuntu | ✅ |
-| 20 | windows | ✅ |
-| 22 | ubuntu | ✅ |
+| ------- | -------- | ------ |
+| 18      | ubuntu   | ✅     |
+| 20      | macos    | ✅     |
+| 20      | ubuntu   | ✅     |
+| 20      | windows  | ✅     |
+| 22      | ubuntu   | ✅     |
 
 ### Bun
 
 | Version | Platform | Status |
-|---------|----------|--------|
-| canary | ubuntu | ✅ |
-| latest | macos | ✅ |
-| latest | ubuntu | ✅ |
+| ------- | -------- | ------ |
+| canary  | ubuntu   | ✅     |
+| latest  | macos    | ✅     |
+| latest  | ubuntu   | ✅     |
 
 ### Quick Status
 
