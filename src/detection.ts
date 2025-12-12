@@ -12,7 +12,14 @@
  * The values are immutable after initialization.
  */
 
-import type { Architecture, Platform, RuntimeName } from "./types.ts";
+import type {
+  Architecture,
+  ArchNamespace,
+  Platform,
+  PlatformNamespace,
+  RuntimeName,
+  RuntimeNamespace,
+} from "./types.ts";
 
 // =============================================================================
 // Global References
@@ -125,24 +132,25 @@ function detectPlatform(): Platform {
 }
 
 /**
- * The detected platform.
+ * The detected platform name as a string.
+ * Use `platform.darwin`, `platform.linux`, etc. for boolean checks.
  */
-export const platform: Platform = detectPlatform();
+export const platformName: Platform = detectPlatform();
 
 /**
  * True when running on macOS.
  */
-export const isDarwin: boolean = platform === "darwin";
+export const isDarwin: boolean = platformName === "darwin";
 
 /**
  * True when running on Linux.
  */
-export const isLinux: boolean = platform === "linux";
+export const isLinux: boolean = platformName === "linux";
 
 /**
  * True when running on Windows.
  */
-export const isWindows: boolean = platform === "windows";
+export const isWindows: boolean = platformName === "windows";
 
 // =============================================================================
 // Architecture Detection (evaluated once)
@@ -174,16 +182,99 @@ function detectArch(): Architecture {
 }
 
 /**
- * The detected CPU architecture.
+ * The detected CPU architecture name as a string.
+ * Use `arch.x64`, `arch.arm64`, etc. for boolean checks.
  */
-export const arch: Architecture = detectArch();
+export const archName: Architecture = detectArch();
 
 /**
  * True when running on x86_64 architecture.
  */
-export const isX64: boolean = arch === "x86_64";
+export const isX64: boolean = archName === "x86_64";
 
 /**
  * True when running on aarch64 / ARM64 / Apple Silicon.
  */
-export const isArm64: boolean = arch === "aarch64";
+export const isArm64: boolean = archName === "aarch64";
+
+// =============================================================================
+// Namespace Objects (for ergonomic imports)
+// =============================================================================
+
+/**
+ * Platform detection namespace.
+ *
+ * Provides a cleaner import style for platform checks (Rust-like):
+ *
+ * @example
+ * ```ts
+ * import { onlywhen, platform, arch, all } from "@hiisi/onlywhen";
+ *
+ * @onlywhen(all(platform.linux, arch.x64))
+ * class LinuxX64Only {}
+ *
+ * if (platform.darwin) {
+ *   macSpecificCode();
+ * }
+ * ```
+ */
+export const platform: PlatformNamespace = Object.freeze({
+  /** `true` when running on macOS */
+  darwin: isDarwin,
+  /** `true` when running on Linux */
+  linux: isLinux,
+  /** `true` when running on Windows */
+  windows: isWindows,
+});
+
+/**
+ * Runtime detection namespace.
+ *
+ * Provides a cleaner import style for runtime checks (Rust-like):
+ *
+ * @example
+ * ```ts
+ * import { onlywhen, runtime, all } from "@hiisi/onlywhen";
+ *
+ * @onlywhen(runtime.deno)
+ * class DenoOnly {}
+ *
+ * if (runtime.node) {
+ *   nodeSpecificCode();
+ * }
+ * ```
+ */
+export const runtime: RuntimeNamespace = Object.freeze({
+  /** `true` when running in Deno */
+  deno: isDeno,
+  /** `true` when running in Node.js */
+  node: isNode,
+  /** `true` when running in Bun */
+  bun: isBun,
+  /** `true` when running in a browser */
+  browser: isBrowser,
+});
+
+/**
+ * Architecture detection namespace.
+ *
+ * Provides a cleaner import style for architecture checks (Rust-like):
+ *
+ * @example
+ * ```ts
+ * import { onlywhen, arch, platform, all } from "@hiisi/onlywhen";
+ *
+ * @onlywhen(all(platform.linux, arch.arm64))
+ * class LinuxArm64Only {}
+ *
+ * if (arch.x64) {
+ *   x64SpecificCode();
+ * }
+ * ```
+ */
+export const arch: ArchNamespace = Object.freeze({
+  /** `true` when running on x86_64 (AMD64) architecture */
+  x64: isX64,
+  /** `true` when running on aarch64 (ARM64 / Apple Silicon) architecture */
+  arm64: isArm64,
+});

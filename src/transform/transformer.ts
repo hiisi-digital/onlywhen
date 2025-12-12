@@ -13,11 +13,13 @@
 
 import {
   ARCH_PROPERTIES,
+  COMBINATOR_EXPORT_NAMES,
   COMBINATOR_METHODS,
   DEFAULT_EXPORT_NAME,
   DEFAULT_MODULE_SPECIFIERS,
   FEATURE_METHOD,
   KNOWN_BOOLEAN_PROPERTIES,
+  NAMESPACE_EXPORTS,
   PLATFORM_PROPERTIES,
   RUNTIME_PROPERTIES,
 } from "./constants.ts";
@@ -52,13 +54,50 @@ interface ImportInfo {
 }
 
 /**
- * Find all imports of onlywhen in the source file.
+ * Tracks namespace imports like platform, runtime, arch.
  */
-function findOnlywhenImports(
-  sourceFile: import("npm:typescript").SourceFile,
+interface NamespaceImportInfo {
+  /** The local name used in the source */
+  localName: string;
+  /** The original export name (platform, runtime, arch) */
+  exportName: "platform" | "runtime" | "arch";
+}
+
+/**
+ * Tracks combinator function imports like all, any, not.
+ */
+interface CombinatorImportInfo {
+  /** The local name used in the source */
+  localName: string;
+  /** The original export name (all, any, not) */
+  exportName: "all" | "any" | "not";
+}
+
+/**
+ * All import information for a source file.
+ */
+interface AllImports {
+  /** onlywhen object imports */
+  onlywhen: ImportInfo[];
+  /** Namespace object imports (platform, runtime, arch) */
+  namespaces: NamespaceImportInfo[];
+  /** Combinator function imports (all, any, not) */
+  combinators: CombinatorImportInfo[];
+}
+
+/**
+ * Find all imports from the onlywhen module including onlywhen object,
+ * namespace objects (platform, runtime, arch), and combinator functions.
+ */
+function findAllImports(
+  sourceFile: import("npm:typescript@^5.0").SourceFile,
   moduleSpecifiers: readonly string[],
-): ImportInfo[] {
-  const imports: ImportInfo[] = [];
+): AllImports {
+  const result: AllImports = {
+    onlywhen: [],
+    namespaces: [],
+    combinators: [],
+  };
   const specifierSet = new Set(moduleSpecifiers);
 
   ts.forEachChild(sourceFile, (node) => {
@@ -70,7 +109,6 @@ function findOnlywhenImports(
     const specifier = moduleSpecifier.text;
 
     // Check if this import is from one of our module specifiers
-    // Also handle version-tagged specifiers like "jsr:@hiisi/onlywhen@^0.2"
     const isOnlywhenImport = Array.from(specifierSet).some((s) =>
       specifier === s || specifier.startsWith(s + "@")
     );
@@ -80,43 +118,78 @@ function findOnlywhenImports(
     const importClause = node.importClause;
     if (!importClause) return;
 
-    // Named imports: import { onlywhen } from "..."
-    // or: import { onlywhen as cfg } from "..."
     if (importClause.namedBindings) {
       if (ts.isNamedImports(importClause.namedBindings)) {
         for (const element of importClause.namedBindings.elements) {
           const importedName = element.propertyName?.text ?? element.name.text;
+          const localName = element.name.text;
+
+          // Check for onlywhen
           if (importedName === DEFAULT_EXPORT_NAME) {
-            imports.push({
-              localName: element.name.text,
-              isNamespace: false,
+            result.onlywhen.push({ localName, isNamespace: false });
+          } // Check for namespace objects (platform, runtime, arch)
+          else if (importedName in NAMESPACE_EXPORTS) {
+            result.namespaces.push({
+              localName,
+              exportName: importedName as "platform" | "runtime" | "arch",
+            });
+          } // Check for combinator functions (all, any, not)
+          else if (COMBINATOR_EXPORT_NAMES.has(importedName)) {
+            result.combinators.push({
+              localName,
+              exportName: importedName as "all" | "any" | "not",
             });
           }
         }
-      } // Namespace import: import * as ow from "..."
-      else if (ts.isNamespaceImport(importClause.namedBindings)) {
-        imports.push({
+      } else if (ts.isNamespaceImport(importClause.namedBindings)) {
+        result.onlywhen.push({
           localName: importClause.namedBindings.name.text,
           isNamespace: true,
         });
       }
     }
 
-    // Default import: import onlywhen from "..." (not our pattern, but handle it)
     if (importClause.name) {
-      imports.push({
+      result.onlywhen.push({
         localName: importClause.name.text,
         isNamespace: false,
       });
     }
   });
 
-  return imports;
+  return result;
 }
 
 // =============================================================================
 // Value Resolution
 // =============================================================================
+
+/**
+ * Resolves a namespace property to its boolean value.
+ * e.g., platform.darwin, runtime.node, arch.x64
+ */
+function resolveNamespacePropertyValue(
+  namespaceName: "platform" | "runtime" | "arch",
+  propertyName: string,
+  config: TargetConfig,
+): boolean | undefined {
+  const namespaceConfig = NAMESPACE_EXPORTS[namespaceName];
+  if (!(propertyName in namespaceConfig)) return undefined;
+
+  const targetValue = namespaceConfig[propertyName];
+
+  switch (namespaceName) {
+    case "platform":
+      if (config.platform === undefined) return undefined;
+      return config.platform === targetValue;
+    case "runtime":
+      if (config.runtime === undefined) return undefined;
+      return config.runtime === targetValue;
+    case "arch":
+      if (config.arch === undefined) return undefined;
+      return config.arch === targetValue;
+  }
+}
 
 /**
  * Resolves a property name to its boolean value based on the target config.
@@ -153,7 +226,7 @@ function resolvePropertyValue(
  */
 function evaluateCombinator(
   methodName: string,
-  args: readonly import("npm:typescript").Expression[],
+  args: readonly import("npm:typescript@^5.0").Expression[],
 ): boolean | undefined {
   // Extract boolean values from arguments
   const booleanArgs: boolean[] = [];
@@ -188,7 +261,7 @@ function evaluateCombinator(
  * Returns undefined if the check cannot be statically evaluated.
  */
 function evaluateFeature(
-  arg: import("npm:typescript").Expression,
+  arg: import("npm:typescript@^5.0").Expression,
   features: string[] | undefined,
 ): boolean | undefined {
   // Features must be configured to transform
@@ -209,8 +282,8 @@ function evaluateFeature(
  * Gets the line and column of a node in the source file.
  */
 function getNodePosition(
-  node: import("npm:typescript").Node,
-  sourceFile: import("npm:typescript").SourceFile,
+  node: import("npm:typescript@^5.0").Node,
+  sourceFile: import("npm:typescript@^5.0").SourceFile,
 ): { line: number; column: number } {
   const { line, character } = sourceFile.getLineAndCharacterOfPosition(
     node.getStart(sourceFile),
@@ -221,7 +294,7 @@ function getNodePosition(
 /**
  * Creates a boolean literal node.
  */
-function createBooleanLiteral(value: boolean): import("npm:typescript").Expression {
+function createBooleanLiteral(value: boolean): import("npm:typescript@^5.0").Expression {
   return value ? ts.factory.createTrue() : ts.factory.createFalse();
 }
 
@@ -237,53 +310,69 @@ function createTransformerFactory(
   config: TargetConfig,
   moduleSpecifiers: readonly string[],
   transformations: TransformInfo[],
-): import("npm:typescript").TransformerFactory<import("npm:typescript").SourceFile> {
+): import("npm:typescript@^5.0").TransformerFactory<import("npm:typescript@^5.0").SourceFile> {
   return (context) => {
     return (sourceFile) => {
-      // Find all onlywhen imports in this file
-      const imports = findOnlywhenImports(sourceFile, moduleSpecifiers);
+      // Find all imports from the onlywhen module
+      const allImports = findAllImports(sourceFile, moduleSpecifiers);
 
-      // If no onlywhen imports, return unchanged
-      if (imports.length === 0) {
+      // If no relevant imports, return unchanged
+      const hasImports = allImports.onlywhen.length > 0 ||
+        allImports.namespaces.length > 0 ||
+        allImports.combinators.length > 0;
+
+      if (!hasImports) {
         return sourceFile;
       }
 
-      // Build a set of local names that refer to onlywhen
-      const onlywhenNames = new Set(imports.map((i) => i.localName));
-      const namespaceImports = new Set(
-        imports.filter((i) => i.isNamespace).map((i) => i.localName),
+      // Build sets and maps for quick lookup
+      const onlywhenNames = new Set(allImports.onlywhen.map((i) => i.localName));
+      const starImports = new Set(
+        allImports.onlywhen.filter((i) => i.isNamespace).map((i) => i.localName),
       );
+
+      // Map local names to their namespace export name (platform, runtime, arch)
+      const namespaceLocalToExport = new Map<string, "platform" | "runtime" | "arch">();
+      for (const ns of allImports.namespaces) {
+        namespaceLocalToExport.set(ns.localName, ns.exportName);
+      }
+
+      // Map local names to their combinator export name (all, any, not)
+      const combinatorLocalToExport = new Map<string, "all" | "any" | "not">();
+      for (const comb of allImports.combinators) {
+        combinatorLocalToExport.set(comb.localName, comb.exportName);
+      }
 
       /**
        * Check if an identifier refers to onlywhen.
        */
-      function isOnlywhenIdentifier(node: import("npm:typescript").Node): boolean {
+      function isOnlywhenIdentifier(node: import("npm:typescript@^5.0").Node): boolean {
         return ts.isIdentifier(node) && onlywhenNames.has(node.text);
       }
 
       /**
        * Get the onlywhen object from a property access.
-       * For namespace imports, we need: namespace.onlywhen
+       * For star imports, we need: namespace.onlywhen
        * For named imports, we need: onlywhen
        */
       function getOnlywhenObject(
-        node: import("npm:typescript").PropertyAccessExpression,
-      ): import("npm:typescript").Expression | undefined {
+        node: import("npm:typescript@^5.0").PropertyAccessExpression,
+      ): import("npm:typescript@^5.0").Expression | undefined {
         const expr = node.expression;
 
         // Direct access: onlywhen.darwin
         if (
           isOnlywhenIdentifier(expr) &&
-          !namespaceImports.has((expr as import("npm:typescript").Identifier).text)
+          !starImports.has((expr as import("npm:typescript@^5.0").Identifier).text)
         ) {
           return expr;
         }
 
-        // Namespace access: namespace.onlywhen.darwin
+        // Star import access: namespace.onlywhen.darwin
         if (
           ts.isPropertyAccessExpression(expr) &&
           ts.isIdentifier(expr.expression) &&
-          namespaceImports.has(expr.expression.text) &&
+          starImports.has(expr.expression.text) &&
           expr.name.text === DEFAULT_EXPORT_NAME
         ) {
           return expr;
@@ -293,11 +382,68 @@ function createTransformerFactory(
       }
 
       /**
+       * Check if a property access is on a namespace object (platform, runtime, arch).
+       * Returns the namespace export name and property name if matched.
+       */
+      function getNamespaceAccess(
+        node: import("npm:typescript@^5.0").PropertyAccessExpression,
+      ): { namespace: "platform" | "runtime" | "arch"; property: string } | undefined {
+        const expr = node.expression;
+
+        // Direct access: platform.darwin, runtime.node, arch.x64
+        if (ts.isIdentifier(expr)) {
+          const nsName = namespaceLocalToExport.get(expr.text);
+          if (nsName) {
+            return { namespace: nsName, property: node.name.text };
+          }
+        }
+
+        return undefined;
+      }
+
+      /**
+       * Check if a call expression is a standalone combinator call.
+       * Returns the combinator name if matched.
+       */
+      function getStandaloneCombinator(
+        callee: import("npm:typescript@^5.0").Expression,
+      ): "all" | "any" | "not" | undefined {
+        if (ts.isIdentifier(callee)) {
+          return combinatorLocalToExport.get(callee.text);
+        }
+        return undefined;
+      }
+
+      /**
        * Visitor function that transforms nodes.
        */
-      function visitor(node: import("npm:typescript").Node): import("npm:typescript").Node {
-        // Handle property access: onlywhen.darwin, onlywhen.node, etc.
+      function visitor(
+        node: import("npm:typescript@^5.0").Node,
+      ): import("npm:typescript@^5.0").Node {
+        // Handle property access: onlywhen.darwin, platform.linux, runtime.node, arch.x64, etc.
         if (ts.isPropertyAccessExpression(node)) {
+          // First check for namespace object access: platform.darwin, runtime.node, arch.x64
+          const nsAccess = getNamespaceAccess(node);
+          if (nsAccess) {
+            const value = resolveNamespacePropertyValue(
+              nsAccess.namespace,
+              nsAccess.property,
+              config,
+            );
+            if (value !== undefined) {
+              const pos = getNodePosition(node, sourceFile);
+              transformations.push({
+                type: "property",
+                original: node.getText(sourceFile),
+                replacement: value ? "true" : "false",
+                line: pos.line,
+                column: pos.column,
+              });
+              return createBooleanLiteral(value);
+            }
+          }
+
+          // Then check for onlywhen object access: onlywhen.darwin, onlywhen.node, etc.
           const onlywhenObj = getOnlywhenObject(node);
           if (onlywhenObj) {
             const propertyName = node.name.text;
@@ -320,10 +466,45 @@ function createTransformerFactory(
           }
         }
 
-        // Handle method calls: onlywhen.all(...), onlywhen.any(...), etc.
+        // Handle method calls: onlywhen.all(...), all(...), etc.
         if (ts.isCallExpression(node)) {
           const callee = node.expression;
 
+          // Check for standalone combinator calls: all(...), any(...), not(...)
+          const standaloneCombinator = getStandaloneCombinator(callee);
+          if (standaloneCombinator) {
+            // First, recursively transform arguments
+            const transformedArgs = node.arguments.map((arg) =>
+              ts.visitNode(arg, visitor) as import("npm:typescript@^5.0").Expression
+            );
+
+            // Try to evaluate the combinator
+            const value = evaluateCombinator(standaloneCombinator, transformedArgs);
+            if (value !== undefined) {
+              const pos = getNodePosition(node, sourceFile);
+              transformations.push({
+                type: "combinator",
+                original: node.getText(sourceFile),
+                replacement: value ? "true" : "false",
+                line: pos.line,
+                column: pos.column,
+              });
+              return createBooleanLiteral(value);
+            }
+
+            // If we couldn't fully evaluate, but args were transformed,
+            // create a new call with transformed args
+            if (transformedArgs.some((arg, i) => arg !== node.arguments[i])) {
+              return ts.factory.updateCallExpression(
+                node,
+                callee,
+                node.typeArguments,
+                transformedArgs,
+              );
+            }
+          }
+
+          // Check for onlywhen method calls: onlywhen.all(...), onlywhen.any(...), etc.
           if (ts.isPropertyAccessExpression(callee)) {
             const onlywhenObj = getOnlywhenObject(callee);
             if (onlywhenObj) {
@@ -333,7 +514,7 @@ function createTransformerFactory(
               if (COMBINATOR_METHODS.has(methodName)) {
                 // First, recursively transform arguments
                 const transformedArgs = node.arguments.map((arg) =>
-                  ts.visitNode(arg, visitor) as import("npm:typescript").Expression
+                  ts.visitNode(arg, visitor) as import("npm:typescript@^5.0").Expression
                 );
 
                 // Try to evaluate the combinator
@@ -385,7 +566,7 @@ function createTransformerFactory(
         return ts.visitEachChild(node, visitor, context);
       }
 
-      return ts.visitNode(sourceFile, visitor) as import("npm:typescript").SourceFile;
+      return ts.visitNode(sourceFile, visitor) as import("npm:typescript@^5.0").SourceFile;
     };
   };
 }

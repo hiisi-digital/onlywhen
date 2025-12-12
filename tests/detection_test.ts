@@ -13,6 +13,7 @@ import { assertEquals, assertExists } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
   arch,
+  archName,
   getRuntimeName,
   isArm64,
   isBrowser,
@@ -24,6 +25,8 @@ import {
   isWindows,
   isX64,
   platform,
+  platformName,
+  runtime,
 } from "../src/detection.ts";
 
 // =============================================================================
@@ -66,21 +69,21 @@ describe("Platform Detection", () => {
     assertEquals(trueCount <= 1, true, "At most one platform should be detected");
   });
 
-  it("should have a valid platform value", () => {
+  it("should have a valid platformName value", () => {
     const validPlatforms = ["darwin", "linux", "windows", "unknown"];
-    assertEquals(validPlatforms.includes(platform), true);
+    assertEquals(validPlatforms.includes(platformName), true);
   });
 
-  it("platform booleans should match platform string", () => {
-    if (platform === "darwin") {
+  it("platform booleans should match platformName string", () => {
+    if (platformName === "darwin") {
       assertEquals(isDarwin, true);
       assertEquals(isLinux, false);
       assertEquals(isWindows, false);
-    } else if (platform === "linux") {
+    } else if (platformName === "linux") {
       assertEquals(isDarwin, false);
       assertEquals(isLinux, true);
       assertEquals(isWindows, false);
-    } else if (platform === "windows") {
+    } else if (platformName === "windows") {
       assertEquals(isDarwin, false);
       assertEquals(isLinux, false);
       assertEquals(isWindows, true);
@@ -100,16 +103,16 @@ describe("Architecture Detection", () => {
     assertEquals(trueCount <= 1, true, "At most one architecture should be detected");
   });
 
-  it("should have a valid arch value", () => {
+  it("should have a valid archName value", () => {
     const validArchs = ["x86_64", "aarch64", "arm", "x86", "unknown"];
-    assertEquals(validArchs.includes(arch), true);
+    assertEquals(validArchs.includes(archName), true);
   });
 
-  it("arch booleans should match arch string", () => {
-    if (arch === "x86_64") {
+  it("arch booleans should match archName string", () => {
+    if (archName === "x86_64") {
       assertEquals(isX64, true);
       assertEquals(isArm64, false);
-    } else if (arch === "aarch64") {
+    } else if (archName === "aarch64") {
       assertEquals(isX64, false);
       assertEquals(isArm64, true);
     }
@@ -129,14 +132,14 @@ describe("Detection Exports", () => {
   });
 
   it("should export all platform detection values", () => {
-    assertExists(platform);
+    assertExists(platformName);
     assertExists(isDarwin);
     assertExists(isLinux);
     assertExists(isWindows);
   });
 
   it("should export all architecture detection values", () => {
-    assertExists(arch);
+    assertExists(archName);
     assertExists(isX64);
     assertExists(isArm64);
   });
@@ -144,5 +147,63 @@ describe("Detection Exports", () => {
   it("should export getRuntimeName function", () => {
     assertExists(getRuntimeName);
     assertEquals(typeof getRuntimeName, "function");
+  });
+});
+
+// =============================================================================
+// Namespace Object Tests
+// =============================================================================
+
+describe("Platform Namespace", () => {
+  it("should have all platform booleans", () => {
+    assertExists(platform.darwin);
+    assertExists(platform.linux);
+    assertExists(platform.windows);
+  });
+
+  it("should match individual exports", () => {
+    assertEquals(platform.darwin, isDarwin);
+    assertEquals(platform.linux, isLinux);
+    assertEquals(platform.windows, isWindows);
+  });
+
+  it("should be frozen", () => {
+    assertEquals(Object.isFrozen(platform), true);
+  });
+});
+
+describe("Runtime Namespace", () => {
+  it("should have all runtime booleans", () => {
+    assertExists(runtime.deno);
+    assertExists(runtime.node);
+    assertExists(runtime.bun);
+    assertExists(runtime.browser);
+  });
+
+  it("should match individual exports", () => {
+    assertEquals(runtime.deno, isDeno);
+    assertEquals(runtime.node, isNode);
+    assertEquals(runtime.bun, isBun);
+    assertEquals(runtime.browser, isBrowser);
+  });
+
+  it("should be frozen", () => {
+    assertEquals(Object.isFrozen(runtime), true);
+  });
+});
+
+describe("Architecture Namespace", () => {
+  it("should have all architecture booleans", () => {
+    assertExists(arch.x64);
+    assertExists(arch.arm64);
+  });
+
+  it("should match individual exports", () => {
+    assertEquals(arch.x64, isX64);
+    assertEquals(arch.arm64, isArm64);
+  });
+
+  it("should be frozen", () => {
+    assertEquals(Object.isFrozen(arch), true);
   });
 });

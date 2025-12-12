@@ -23,6 +23,7 @@ export { onlywhen } from "./cfg.ts";
 
 export {
   arch,
+  archName,
   getRuntimeName,
   isArm64,
   isBrowser,
@@ -34,6 +35,8 @@ export {
   isWindows,
   isX64,
   platform,
+  platformName,
+  runtime,
 } from "./detection.ts";
 
 // =============================================================================
@@ -73,6 +76,7 @@ export { match, matchAsync } from "./match.ts";
 
 export type {
   Architecture,
+  ArchNamespace,
   AsyncMatchHandlers,
   Cfg,
   CfgDecorator,
@@ -81,5 +85,7 @@ export type {
   MatchHandlers,
   MethodDecorator,
   Platform,
+  PlatformNamespace,
   RuntimeName,
+  RuntimeNamespace,
 } from "./types.ts";

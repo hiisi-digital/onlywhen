@@ -9,8 +9,9 @@ on:
       - main
 
 jobs:
-  test:
-    name: Test
+  # Deno tests (primary)
+  test-deno:
+    name: Test (Deno)
     runs-on: ubuntu-latest
 
     steps:
@@ -36,3 +37,143 @@ jobs:
 
       - name: Dry run publish
         run: deno publish --dry-run
+
+  # Node.js tests
+  test-node:
+    name: Test (Node.js ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: ['18', '20', '22']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno (for build)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Build npm package
+        run: deno run -A scripts/build-npm.ts
+
+      - name: Test CJS import
+        working-directory: ./npm
+        run: |
+          node -e "
+            const { onlywhen, platform, runtime, arch, all } = require('./script/mod.js');
+            console.log('CJS import successful');
+            console.log('  runtime.node:', runtime.node);
+            console.log('  onlywhen.node:', onlywhen.node);
+            console.log('  platform:', Object.keys(platform).filter(k => platform[k]));
+            console.log('  arch:', Object.keys(arch).filter(k => arch[k]));
+            
+            // Verify values
+            if (!runtime.node) throw new Error('runtime.node should be true');
+            if (!onlywhen.node) throw new Error('onlywhen.node should be true');
+            if (runtime.deno) throw new Error('runtime.deno should be false');
+            if (runtime.bun) throw new Error('runtime.bun should be false');
+            
+            // Test combinators
+            const result = all(runtime.node, onlywhen.node);
+            if (!result) throw new Error('all() combinator failed');
+            
+            console.log('All CJS tests passed!');
+          "
+
+      - name: Test ESM import
+        working-directory: ./npm
+        run: |
+          node --input-type=module -e "
+            import { onlywhen, platform, runtime, arch, all, not } from './esm/mod.js';
+            console.log('ESM import successful');
+            console.log('  runtime.node:', runtime.node);
+            console.log('  onlywhen.node:', onlywhen.node);
+            console.log('  platform:', Object.keys(platform).filter(k => platform[k]));
+            console.log('  arch:', Object.keys(arch).filter(k => arch[k]));
+            
+            // Verify values
+            if (!runtime.node) throw new Error('runtime.node should be true');
+            if (!onlywhen.node) throw new Error('onlywhen.node should be true');
+            if (runtime.deno) throw new Error('runtime.deno should be false');
+            if (runtime.bun) throw new Error('runtime.bun should be false');
+            
+            // Test combinators
+            const result = all(runtime.node, not(runtime.deno));
+            if (!result) throw new Error('all()/not() combinators failed');
+            
+            console.log('All ESM tests passed!');
+          "
+
+  # Bun tests
+  test-bun:
+    name: Test (Bun ${{ matrix.bun-version }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        bun-version: ['latest', 'canary']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Deno (for build)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ matrix.bun-version }}
+
+      - name: Build npm package
+        run: deno run -A scripts/build-npm.ts
+
+      - name: Test ESM import in Bun
+        working-directory: ./npm
+        run: |
+          bun -e "
+            import { onlywhen, platform, runtime, arch, all, not } from './esm/mod.js';
+            console.log('Bun ESM import successful');
+            console.log('  runtime.bun:', runtime.bun);
+            console.log('  onlywhen.bun:', onlywhen.bun);
+            console.log('  platform:', Object.keys(platform).filter(k => platform[k]));
+            console.log('  arch:', Object.keys(arch).filter(k => arch[k]));
+            
+            // Verify values
+            if (!runtime.bun) throw new Error('runtime.bun should be true');
+            if (!onlywhen.bun) throw new Error('onlywhen.bun should be true');
+            if (runtime.deno) throw new Error('runtime.deno should be false');
+            if (runtime.node) throw new Error('runtime.node should be false in Bun');
+            
+            // Test combinators
+            const result = all(runtime.bun, not(runtime.deno));
+            if (!result) throw new Error('all()/not() combinators failed');
+            
+            console.log('All Bun ESM tests passed!');
+          "
+
+      - name: Test CJS import in Bun
+        working-directory: ./npm
+        run: |
+          bun -e "
+            const { onlywhen, platform, runtime, arch, all } = require('./script/mod.js');
+            console.log('Bun CJS import successful');
+            console.log('  runtime.bun:', runtime.bun);
+            console.log('  onlywhen.bun:', onlywhen.bun);
+            
+            // Verify values
+            if (!runtime.bun) throw new Error('runtime.bun should be true');
+            if (!onlywhen.bun) throw new Error('onlywhen.bun should be true');
+            
+            console.log('All Bun CJS tests passed!');
+          "

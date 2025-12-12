@@ -49,6 +49,55 @@ export type Platform = "darwin" | "linux" | "windows" | "unknown";
 export type Architecture = "x86_64" | "aarch64" | "arm" | "x86" | "unknown";
 
 // =============================================================================
+// Namespace Types (for ergonomic imports)
+// =============================================================================
+
+/**
+ * Platform detection namespace object.
+ *
+ * Provides cleaner access to platform booleans:
+ * `platform.darwin`, `platform.linux`, `platform.windows`
+ */
+export interface PlatformNamespace {
+  /** `true` when running on macOS */
+  readonly darwin: boolean;
+  /** `true` when running on Linux */
+  readonly linux: boolean;
+  /** `true` when running on Windows */
+  readonly windows: boolean;
+}
+
+/**
+ * Runtime detection namespace object.
+ *
+ * Provides cleaner access to runtime booleans:
+ * `runtime.deno`, `runtime.node`, `runtime.bun`, `runtime.browser`
+ */
+export interface RuntimeNamespace {
+  /** `true` when running in Deno */
+  readonly deno: boolean;
+  /** `true` when running in Node.js */
+  readonly node: boolean;
+  /** `true` when running in Bun */
+  readonly bun: boolean;
+  /** `true` when running in a browser */
+  readonly browser: boolean;
+}
+
+/**
+ * Architecture detection namespace object.
+ *
+ * Provides cleaner access to architecture booleans:
+ * `arch.x64`, `arch.arm64`
+ */
+export interface ArchNamespace {
+  /** `true` when running on x86_64 (AMD64) architecture */
+  readonly x64: boolean;
+  /** `true` when running on aarch64 (ARM64 / Apple Silicon) architecture */
+  readonly arm64: boolean;
+}
+
+// =============================================================================
 // Decorator Types
 // =============================================================================
 
