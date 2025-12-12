@@ -72,6 +72,7 @@
       "src/features.ts",
       "src/combinators.ts",
       "src/decorators.ts",
+      "src/match.ts",
       "src/types.ts",
       "src/mod.ts",
       "README.md",
