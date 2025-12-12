@@ -22,7 +22,7 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write # Required for npm provenance
+      id-token: write # Required for npm provenance (OIDC)
 
     steps:
       - name: Checkout repository
@@ -38,6 +38,9 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Verify version matches tag
         if: github.event_name == 'push'
@@ -102,9 +105,10 @@ jobs:
       - name: Publish to npm
         if: github.event.inputs.dry_run != 'true' && steps.check_version.outputs.already_published != 'true'
         working-directory: ./npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Using npm's trusted publishing (OIDC) - no token needed
+        # Requires id-token: write permission and trusted publisher configured on npm
         run: |
+          npm config set registry https://registry.npmjs.org/
           npm publish --access public --provenance
 
       - name: Post-publish verification
