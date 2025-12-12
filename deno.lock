@@ -149,7 +149,8 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1",
-      "jsr:@std/testing@1"
+      "jsr:@std/testing@1",
+      "npm:typescript@5"
     ]
   }
 }
