@@ -30,18 +30,24 @@ import type { TargetConfig, TransformInfo, TransformOptions, TransformResult } f
 // TypeScript Import & Type Aliases
 // =============================================================================
 
-// Import TypeScript - works in both Deno and Node
-let ts: typeof import("npm:typescript@^5.0");
+// TypeScript is a BUILD-TIME / DEV dependency only.
+// It is NOT bundled with the runtime library - it's dynamically imported
+// on first call to transform() or ensureTypeScript().
+// Users who only import from the main module (platform, runtime, etc.)
+// never load TypeScript at all.
+//
+// The "typescript" import is mapped in deno.json to npm:typescript@^5.0
+let ts: typeof import("typescript");
 
 /** Type alias for TypeScript AST node types to reduce verbosity */
-type TSNode = import("npm:typescript@^5.0").Node;
-type TSExpression = import("npm:typescript@^5.0").Expression;
-type TSSourceFile = import("npm:typescript@^5.0").SourceFile;
-type TSDecorator = import("npm:typescript@^5.0").Decorator;
-type TSPropertyAccessExpression = import("npm:typescript@^5.0").PropertyAccessExpression;
-type TSClassElement = import("npm:typescript@^5.0").ClassElement;
-type TSBlock = import("npm:typescript@^5.0").Block;
-type TSTransformerFactory<T extends TSNode> = import("npm:typescript@^5.0").TransformerFactory<T>;
+type TSNode = import("typescript").Node;
+type TSExpression = import("typescript").Expression;
+type TSSourceFile = import("typescript").SourceFile;
+type TSDecorator = import("typescript").Decorator;
+type TSPropertyAccessExpression = import("typescript").PropertyAccessExpression;
+type TSClassElement = import("typescript").ClassElement;
+type TSBlock = import("typescript").Block;
+type TSTransformerFactory<T extends TSNode> = import("typescript").TransformerFactory<T>;
 
 /** Valid combinator names */
 type CombinatorName = "all" | "any" | "not";
@@ -51,7 +57,7 @@ type NamespaceName = "platform" | "runtime" | "arch";
 
 async function ensureTypeScript(): Promise<void> {
   if (!ts) {
-    ts = await import("npm:typescript@^5.0");
+    ts = await import("typescript");
   }
 }
 
