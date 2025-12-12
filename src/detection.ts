@@ -43,11 +43,13 @@ export const isBun: boolean = typeof globalProcess !== "undefined" &&
   typeof globalProcess.versions?.bun !== "undefined";
 
 /**
- * Whether the current runtime is Node.js (but not Bun).
+ * Whether the current runtime is Node.js (but not Bun or Deno).
+ * Note: Deno 2+ provides process for Node compatibility, so we must exclude it.
  */
 export const isNode: boolean = typeof globalProcess !== "undefined" &&
   typeof globalProcess.versions?.node !== "undefined" &&
-  !isBun;
+  !isBun &&
+  !isDeno;
 
 /**
  * Whether the current runtime is a browser.
