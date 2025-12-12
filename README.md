@@ -182,16 +182,40 @@ const result = match({
 | `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))`           |
 | `#[cfg(not(windows))]`                      | `@onlywhen(onlywhen.not(onlywhen.windows))`             |
 
-## Future: Static Analysis
+## Static Analysis Transform
 
-The API is shaped so a build plugin could:
+The `@hiisi/onlywhen/transform` module provides build-time transformation of
+onlywhen expressions to boolean literals, enabling dead code elimination.
 
-1. Find patterns like `if (onlywhen.darwin)` or `@onlywhen(onlywhen.darwin)`
-2. Replace `onlywhen.darwin` with `true` or `false` for a target platform
-3. Let bundlers eliminate dead code
-4. Produce platform-specific builds
+```typescript
+import { transform } from "@hiisi/onlywhen/transform";
 
-Same idea as `process.env.NODE_ENV` in production bundlers.
+const source = `
+import { onlywhen } from "@hiisi/onlywhen";
+if (onlywhen.darwin) { macCode(); }
+if (onlywhen.linux) { linuxCode(); }
+`;
+
+const result = await transform(source, {
+  platform: "darwin",
+  runtime: "node",
+  arch: "arm64",
+  features: ["experimental"],
+});
+
+// result.code:
+// if (true) { macCode(); }
+// if (false) { linuxCode(); }
+```
+
+The transform handles:
+
+- Property access: `onlywhen.darwin`, `onlywhen.node`, `onlywhen.x64`
+- Combinators: `onlywhen.all(...)`, `onlywhen.any(...)`, `onlywhen.not(...)`
+- Feature checks: `onlywhen.feature("name")`
+- Import aliases: `import { onlywhen as cfg } from "..."`
+
+Properties not specified in the config are left as runtime checks.
 
 ## Support
 
