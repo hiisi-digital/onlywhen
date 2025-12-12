@@ -6,10 +6,14 @@
 /**
  * @module cli
  *
- * Command-line interface for onlywhen.
+ * Cross-runtime command-line interface for onlywhen.
  *
  * Usage:
+ *   # Deno
  *   deno run -A jsr:@hiisi/onlywhen/cli transform [options] <input> [-o <output>]
+ *
+ *   # Node.js (after npm install)
+ *   npx onlywhen transform [options] <input> [-o <output>]
  *
  * Commands:
  *   transform   Transform source files, replacing onlywhen expressions with boolean literals
@@ -20,7 +24,6 @@
  *   --arch=<x64|arm64>                  Target architecture
  *   --features=<feat1,feat2,...>        Enabled feature flags (comma-separated)
  *   -o, --output=<path>                 Output file or directory
- *   -w, --watch                         Watch for changes and re-transform
  *   -v, --verbose                       Show detailed output
  *   -h, --help                          Show help
  *   --version                           Show version
@@ -29,10 +32,146 @@
 import { type TargetConfig, transform } from "./src/transform/mod.ts";
 
 // =============================================================================
-// Version
+// Version (synced from deno.json at build time or read dynamically)
 // =============================================================================
 
-const VERSION = "0.3.0";
+const VERSION = "0.5.2";
+
+// =============================================================================
+// Cross-Runtime Compatibility Layer
+// =============================================================================
+
+interface FileSystem {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<void>;
+  stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean } | null>;
+  mkdir(path: string): Promise<void>;
+  readDir(path: string): Promise<Array<{ name: string; isFile: boolean; isDirectory: boolean }>>;
+}
+
+interface Runtime {
+  args: string[];
+  exit(code: number): never;
+  fs: FileSystem;
+  joinPath(...parts: string[]): string;
+  dirname(path: string): string;
+}
+
+// Declare Deno on globalThis for type safety
+declare const Deno: {
+  args: string[];
+  exit(code: number): never;
+  readTextFile(path: string): Promise<string>;
+  writeTextFile(path: string, content: string): Promise<void>;
+  stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean }>;
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+  readDir(path: string): AsyncIterable<{ name: string; isFile: boolean; isDirectory: boolean }>;
+  errors: { AlreadyExists: new () => Error };
+} | undefined;
+
+/**
+ * Detect and initialize the runtime environment.
+ */
+async function initRuntime(): Promise<Runtime> {
+  // Deno
+  if (typeof Deno !== "undefined") {
+    const denoRuntime = Deno;
+    return {
+      args: denoRuntime.args,
+      exit: (code: number): never => denoRuntime.exit(code),
+      fs: {
+        async readFile(path: string): Promise<string> {
+          return await denoRuntime.readTextFile(path);
+        },
+        async writeFile(path: string, content: string): Promise<void> {
+          await denoRuntime.writeTextFile(path, content);
+        },
+        async stat(path: string): Promise<{ isFile: boolean; isDirectory: boolean } | null> {
+          try {
+            const stat = await denoRuntime.stat(path);
+            return { isFile: stat.isFile, isDirectory: stat.isDirectory };
+          } catch {
+            return null;
+          }
+        },
+        async mkdir(path: string): Promise<void> {
+          try {
+            await denoRuntime.mkdir(path, { recursive: true });
+          } catch (e) {
+            if (!(e instanceof denoRuntime.errors.AlreadyExists)) {
+              throw e;
+            }
+          }
+        },
+        async readDir(
+          path: string,
+        ): Promise<Array<{ name: string; isFile: boolean; isDirectory: boolean }>> {
+          const entries: Array<{ name: string; isFile: boolean; isDirectory: boolean }> = [];
+          for await (const entry of denoRuntime.readDir(path)) {
+            entries.push({
+              name: entry.name,
+              isFile: entry.isFile,
+              isDirectory: entry.isDirectory,
+            });
+          }
+          return entries;
+        },
+      },
+      joinPath(...parts: string[]): string {
+        return parts.join("/").replace(/\/+/g, "/");
+      },
+      dirname(path: string): string {
+        const lastSlash = path.lastIndexOf("/");
+        return lastSlash > 0 ? path.substring(0, lastSlash) : ".";
+      },
+    };
+  }
+
+  // Node.js / Bun
+  try {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const process = await import("node:process");
+
+    return {
+      args: process.default.argv.slice(2),
+      exit: (code: number): never => process.default.exit(code),
+      fs: {
+        async readFile(filePath: string): Promise<string> {
+          return await fs.readFile(filePath, "utf-8");
+        },
+        async writeFile(filePath: string, content: string): Promise<void> {
+          await fs.writeFile(filePath, content, "utf-8");
+        },
+        async stat(filePath: string): Promise<{ isFile: boolean; isDirectory: boolean } | null> {
+          try {
+            const stat = await fs.stat(filePath);
+            return { isFile: stat.isFile(), isDirectory: stat.isDirectory() };
+          } catch {
+            return null;
+          }
+        },
+        async mkdir(dirPath: string): Promise<void> {
+          await fs.mkdir(dirPath, { recursive: true });
+        },
+        async readDir(
+          dirPath: string,
+        ): Promise<Array<{ name: string; isFile: boolean; isDirectory: boolean }>> {
+          const entries = await fs.readdir(dirPath, { withFileTypes: true });
+          return entries.map((entry) => ({
+            name: entry.name,
+            isFile: entry.isFile(),
+            isDirectory: entry.isDirectory(),
+          }));
+        },
+      },
+      joinPath: path.join,
+      dirname: path.dirname,
+    };
+  } catch {
+    throw new Error("Unsupported runtime. This CLI requires Deno, Node.js, or Bun.");
+  }
+}
 
 // =============================================================================
 // Help Text
@@ -99,7 +238,7 @@ interface ParsedArgs {
   version: boolean;
 }
 
-function parseArgs(args: string[]): ParsedArgs {
+function parseArgs(args: string[], exit: (code: number) => never): ParsedArgs {
   const result: ParsedArgs = {
     command: null,
     input: null,
@@ -157,7 +296,7 @@ function parseArgs(args: string[]): ParsedArgs {
         result.platform = value;
       } else {
         console.error(`Invalid platform: ${value}. Use darwin, linux, or windows.`);
-        Deno.exit(1);
+        exit(1);
       }
       continue;
     }
@@ -169,7 +308,7 @@ function parseArgs(args: string[]): ParsedArgs {
         result.runtime = value;
       } else {
         console.error(`Invalid runtime: ${value}. Use deno, node, bun, or browser.`);
-        Deno.exit(1);
+        exit(1);
       }
       continue;
     }
@@ -181,7 +320,7 @@ function parseArgs(args: string[]): ParsedArgs {
         result.arch = value;
       } else {
         console.error(`Invalid arch: ${value}. Use x64 or arm64.`);
-        Deno.exit(1);
+        exit(1);
       }
       continue;
     }
@@ -197,7 +336,7 @@ function parseArgs(args: string[]): ParsedArgs {
     if (arg.startsWith("-")) {
       console.error(`Unknown option: ${arg}`);
       console.error("Use --help for usage information.");
-      Deno.exit(1);
+      exit(1);
     }
 
     // Positional argument
@@ -219,39 +358,15 @@ function parseArgs(args: string[]): ParsedArgs {
 // File System Utilities
 // =============================================================================
 
-async function isDirectory(path: string): Promise<boolean> {
-  try {
-    const stat = await Deno.stat(path);
-    return stat.isDirectory;
-  } catch {
-    return false;
-  }
-}
-
-async function isFile(path: string): Promise<boolean> {
-  try {
-    const stat = await Deno.stat(path);
-    return stat.isFile;
-  } catch {
-    return false;
-  }
-}
-
-async function ensureDir(path: string): Promise<void> {
-  try {
-    await Deno.mkdir(path, { recursive: true });
-  } catch (e) {
-    if (!(e instanceof Deno.errors.AlreadyExists)) {
-      throw e;
-    }
-  }
-}
-
-async function* walkFiles(dir: string): AsyncGenerator<string> {
-  for await (const entry of Deno.readDir(dir)) {
-    const path = `${dir}/${entry.name}`;
+async function* walkFiles(
+  dir: string,
+  runtime: Runtime,
+): AsyncGenerator<string> {
+  const entries = await runtime.fs.readDir(dir);
+  for (const entry of entries) {
+    const path = runtime.joinPath(dir, entry.name);
     if (entry.isDirectory) {
-      yield* walkFiles(path);
+      yield* walkFiles(path, runtime);
     } else if (entry.isFile && (entry.name.endsWith(".ts") || entry.name.endsWith(".js"))) {
       yield path;
     }
@@ -273,18 +388,19 @@ async function transformFile(
   outputPath: string | null,
   config: TargetConfig,
   verbose: boolean,
+  runtime: Runtime,
 ): Promise<{ transformCount: number; error?: string }> {
   try {
-    const source = await Deno.readTextFile(inputPath);
+    const source = await runtime.fs.readFile(inputPath);
     const result = await transform(source, config, { filename: inputPath });
 
     if (outputPath) {
       // Ensure output directory exists
-      const outputDir = outputPath.substring(0, outputPath.lastIndexOf("/"));
-      if (outputDir) {
-        await ensureDir(outputDir);
+      const outputDir = runtime.dirname(outputPath);
+      if (outputDir && outputDir !== ".") {
+        await runtime.fs.mkdir(outputDir);
       }
-      await Deno.writeTextFile(outputPath, result.code);
+      await runtime.fs.writeFile(outputPath, result.code);
     } else {
       // Write to stdout
       console.log(result.code);
@@ -304,12 +420,12 @@ async function transformFile(
   }
 }
 
-async function runTransformCommand(args: ParsedArgs): Promise<void> {
+async function runTransformCommand(args: ParsedArgs, runtime: Runtime): Promise<void> {
   // Validate input
   if (!args.input) {
     console.error("Error: No input file or directory specified.");
     console.error("Use --help for usage information.");
-    Deno.exit(1);
+    runtime.exit(1);
   }
 
   // Check if any transform config is provided
@@ -331,13 +447,15 @@ async function runTransformCommand(args: ParsedArgs): Promise<void> {
   }
 
   // Process input
-  const inputIsDir = await isDirectory(args.input);
-  const inputIsFile = await isFile(args.input);
+  const stat = await runtime.fs.stat(args.input);
 
-  if (!inputIsDir && !inputIsFile) {
+  if (!stat) {
     console.error(`Error: Input path does not exist: ${args.input}`);
-    Deno.exit(1);
+    runtime.exit(1);
   }
+
+  const inputIsDir = stat.isDirectory;
+  const inputIsFile = stat.isFile;
 
   const stats: TransformStats = {
     filesProcessed: 0,
@@ -348,33 +466,33 @@ async function runTransformCommand(args: ParsedArgs): Promise<void> {
   if (inputIsFile) {
     // Transform single file
     const outputPath = args.output;
-    const result = await transformFile(args.input, outputPath, config, args.verbose);
+    const result = await transformFile(args.input, outputPath, config, args.verbose, runtime);
 
     if (result.error) {
       console.error(`Error processing ${args.input}: ${result.error}`);
-      Deno.exit(1);
+      runtime.exit(1);
     }
 
     stats.filesProcessed = 1;
     stats.totalTransformations = result.transformCount;
-  } else {
+  } else if (inputIsDir) {
     // Transform directory
     if (!args.output) {
       console.error("Error: Output directory is required when input is a directory.");
       console.error("Use -o or --output to specify the output directory.");
-      Deno.exit(1);
+      runtime.exit(1);
     }
 
     // Ensure output directory exists
-    await ensureDir(args.output);
+    await runtime.fs.mkdir(args.output);
 
     // Process all files
-    for await (const inputPath of walkFiles(args.input)) {
+    for await (const inputPath of walkFiles(args.input, runtime)) {
       // Calculate relative path and output path
       const relativePath = inputPath.slice(args.input.length);
-      const outputPath = args.output + relativePath;
+      const outputPath = runtime.joinPath(args.output, relativePath);
 
-      const result = await transformFile(inputPath, outputPath, config, args.verbose);
+      const result = await transformFile(inputPath, outputPath, config, args.verbose, runtime);
 
       stats.filesProcessed++;
       stats.totalTransformations += result.transformCount;
@@ -397,7 +515,7 @@ async function runTransformCommand(args: ParsedArgs): Promise<void> {
       for (const err of stats.errors) {
         console.error(`  ${err}`);
       }
-      Deno.exit(1);
+      runtime.exit(1);
     }
   }
 }
@@ -407,40 +525,47 @@ async function runTransformCommand(args: ParsedArgs): Promise<void> {
 // =============================================================================
 
 async function main(): Promise<void> {
-  const args = parseArgs(Deno.args);
+  const runtime = await initRuntime();
+  const args = parseArgs(runtime.args, runtime.exit);
 
   // Handle help
   if (args.help) {
     console.log(HELP_TEXT);
-    Deno.exit(0);
+    runtime.exit(0);
   }
 
   // Handle version
   if (args.version) {
     console.log(`onlywhen ${VERSION}`);
-    Deno.exit(0);
+    runtime.exit(0);
   }
 
   // Handle commands
   if (!args.command) {
     console.error("Error: No command specified.");
     console.error("Use --help for usage information.");
-    Deno.exit(1);
+    runtime.exit(1);
   }
 
   switch (args.command) {
     case "transform":
-      await runTransformCommand(args);
+      await runTransformCommand(args, runtime);
       break;
 
     default:
       console.error(`Unknown command: ${args.command}`);
       console.error("Use --help for usage information.");
-      Deno.exit(1);
+      runtime.exit(1);
   }
 }
 
-// Run if this is the main module
-if (import.meta.main) {
-  main();
-}
+// Run the CLI
+main().catch((err) => {
+  console.error("Fatal error:", err);
+  // Can't use runtime.exit here as it may not be initialized
+  if (typeof Deno !== "undefined") {
+    Deno.exit(1);
+  } else {
+    import("node:process").then((p) => p.default.exit(1));
+  }
+});

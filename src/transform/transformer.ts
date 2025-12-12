@@ -37,17 +37,17 @@ import type { TargetConfig, TransformInfo, TransformOptions, TransformResult } f
 // never load TypeScript at all.
 //
 // The "typescript" import is mapped in deno.json to npm:typescript@^5.0
-let ts: typeof import("typescript");
+let ts: typeof import("npm:typescript@^5.0");
 
 /** Type alias for TypeScript AST node types to reduce verbosity */
-type TSNode = import("typescript").Node;
-type TSExpression = import("typescript").Expression;
-type TSSourceFile = import("typescript").SourceFile;
-type TSDecorator = import("typescript").Decorator;
-type TSPropertyAccessExpression = import("typescript").PropertyAccessExpression;
-type TSClassElement = import("typescript").ClassElement;
-type TSBlock = import("typescript").Block;
-type TSTransformerFactory<T extends TSNode> = import("typescript").TransformerFactory<T>;
+type TSNode = import("npm:typescript@^5.0").Node;
+type TSExpression = import("npm:typescript@^5.0").Expression;
+type TSSourceFile = import("npm:typescript@^5.0").SourceFile;
+type TSDecorator = import("npm:typescript@^5.0").Decorator;
+type TSPropertyAccessExpression = import("npm:typescript@^5.0").PropertyAccessExpression;
+type TSClassElement = import("npm:typescript@^5.0").ClassElement;
+type TSBlock = import("npm:typescript@^5.0").Block;
+type TSTransformerFactory<T extends TSNode> = import("npm:typescript@^5.0").TransformerFactory<T>;
 
 /** Valid combinator names */
 type CombinatorName = "all" | "any" | "not";
@@ -57,7 +57,7 @@ type NamespaceName = "platform" | "runtime" | "arch";
 
 async function ensureTypeScript(): Promise<void> {
   if (!ts) {
-    ts = await import("typescript");
+    ts = await import("npm:typescript@^5.0");
   }
 }
 
