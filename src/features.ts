@@ -6,164 +6,163 @@
 /**
  * @module features
  *
- * Feature flag loading and management.
- * Loads features from deno.json or package.json.
+ * Feature flag management.
+ *
+ * Features are loaded from `deno.json` or `package.json` at startup,
+ * and can be enabled/disabled at runtime for testing or dynamic configuration.
  */
 
 import { isBun, isDeno, isNode } from "./detection.ts";
 
 // =============================================================================
-// Types
+// Feature Set
 // =============================================================================
 
-interface ConfigWithFeatures {
-  features?: string[];
-}
+/**
+ * The set of currently enabled features.
+ * Starts with features loaded from config, can be modified at runtime.
+ */
+const features: Set<string> = new Set<string>();
 
 // =============================================================================
-// Feature Loading
+// Config Loading
 // =============================================================================
 
 /**
  * Attempts to read and parse a JSON config file.
- * Returns null if the file doesn't exist or can't be parsed.
+ * Returns the features array if found, empty array otherwise.
  */
-function tryReadConfig(path: string): ConfigWithFeatures | null {
+function loadFeaturesFromConfig(path: string): string[] {
   try {
     if (isDeno) {
       // deno-lint-ignore no-explicit-any
       const Deno = (globalThis as any).Deno;
       const text = Deno.readTextFileSync(path);
-      return JSON.parse(text) as ConfigWithFeatures;
+      const config = JSON.parse(text);
+      return Array.isArray(config?.features) ? config.features : [];
     }
 
     if (isNode || isBun) {
       // deno-lint-ignore no-explicit-any
-      const process = (globalThis as any).process;
-      // deno-lint-ignore no-explicit-any
-      const require = (globalThis as any).require;
+      const g = globalThis as any;
+      const require = g.require;
 
       if (typeof require === "function") {
-        // CommonJS environment
         const fs = require("fs");
         const pathModule = require("path");
-        const fullPath = pathModule.resolve(process.cwd(), path);
+        const fullPath = pathModule.resolve(g.process.cwd(), path);
+
         if (fs.existsSync(fullPath)) {
           const text = fs.readFileSync(fullPath, "utf-8");
-          return JSON.parse(text) as ConfigWithFeatures;
+          const config = JSON.parse(text);
+          return Array.isArray(config?.features) ? config.features : [];
         }
-      } else {
-        // ESM environment - we can't use dynamic import synchronously
-        // Features will need to be loaded asynchronously or pre-configured
-        return null;
       }
     }
   } catch {
-    // File doesn't exist or couldn't be parsed
-    return null;
+    // File doesn't exist or couldn't be parsed - not an error
   }
 
-  return null;
+  return [];
 }
 
 /**
- * Loads features from the appropriate config file.
+ * Initialize features from config files.
  * Tries deno.json first, then package.json.
  */
-function loadFeatures(): Set<string> {
-  const features = new Set<string>();
-
+function initializeFeatures(): void {
   // Try deno.json first
-  const denoConfig = tryReadConfig("deno.json");
-  if (denoConfig?.features) {
-    for (const feature of denoConfig.features) {
-      features.add(feature);
+  const denoFeatures = loadFeaturesFromConfig("deno.json");
+  if (denoFeatures.length > 0) {
+    for (let i = 0; i < denoFeatures.length; i++) {
+      features.add(denoFeatures[i]);
     }
-    return features;
+    return;
   }
 
   // Fall back to package.json
-  const packageConfig = tryReadConfig("package.json");
-  if (packageConfig?.features) {
-    for (const feature of packageConfig.features) {
-      features.add(feature);
-    }
-    return features;
+  const packageFeatures = loadFeaturesFromConfig("package.json");
+  for (let i = 0; i < packageFeatures.length; i++) {
+    features.add(packageFeatures[i]);
   }
-
-  return features;
 }
 
+// Initialize on module load
+initializeFeatures();
+
 // =============================================================================
-// Exported State
+// Public API
 // =============================================================================
 
 /**
- * The set of enabled features, loaded from config files.
- */
-export const enabledFeatures: ReadonlySet<string> = loadFeatures();
-
-/**
- * Checks if a feature flag is enabled.
+ * Checks if a feature is enabled.
  *
- * @param name - The name of the feature to check
- * @returns True if the feature is enabled in the config
+ * @param name - The feature name to check
+ * @returns True if the feature is enabled
  *
  * @example
  * ```ts
- * if (feature("experimental")) {
+ * if (hasFeature("experimental")) {
  *   experimentalCode();
  * }
  * ```
  */
-export function feature(name: string): boolean {
-  return enabledFeatures.has(name);
-}
-
-// =============================================================================
-// Feature Management (for testing and dynamic configuration)
-// =============================================================================
-
-/**
- * Mutable feature set for testing and dynamic configuration.
- * This is separate from enabledFeatures to allow modification.
- */
-const mutableFeatures = new Set<string>(enabledFeatures);
-
-/**
- * Adds a feature flag at runtime.
- * Useful for testing or dynamic feature activation.
- *
- * @param name - The feature name to enable
- */
-export function enableFeature(name: string): void {
-  mutableFeatures.add(name);
+export function hasFeature(name: string): boolean {
+  return features.has(name);
 }
 
 /**
- * Removes a feature flag at runtime.
- * Useful for testing or dynamic feature deactivation.
- *
- * @param name - The feature name to disable
- */
-export function disableFeature(name: string): void {
-  mutableFeatures.delete(name);
-}
-
-/**
- * Checks if a feature is enabled (including runtime modifications).
- * This version includes dynamically enabled features.
+ * Alias for `hasFeature`. Checks if a feature is enabled.
  *
  * @param name - The feature name to check
  * @returns True if the feature is enabled
  */
-export function hasFeature(name: string): boolean {
-  return mutableFeatures.has(name);
+export function feature(name: string): boolean {
+  return features.has(name);
 }
 
 /**
- * Gets all currently enabled features (including runtime modifications).
+ * Enables a feature at runtime.
+ *
+ * @param name - The feature name to enable
+ *
+ * @example
+ * ```ts
+ * enableFeature("debug");
+ * ```
+ */
+export function enableFeature(name: string): void {
+  features.add(name);
+}
+
+/**
+ * Disables a feature at runtime.
+ *
+ * @param name - The feature name to disable
+ *
+ * @example
+ * ```ts
+ * disableFeature("legacy");
+ * ```
+ */
+export function disableFeature(name: string): void {
+  features.delete(name);
+}
+
+/**
+ * Gets the set of all enabled features.
+ * Returns the internal set directly for efficiency.
+ *
+ * @returns ReadonlySet of enabled feature names
  */
 export function getAllFeatures(): ReadonlySet<string> {
-  return mutableFeatures;
+  return features;
 }
+
+/**
+ * The set of enabled features from initial config load.
+ * Alias for `getAllFeatures()` for backward compatibility.
+ *
+ * @deprecated Use `getAllFeatures()` instead
+ */
+export const enabledFeatures: ReadonlySet<string> = features;

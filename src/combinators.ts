@@ -8,6 +8,8 @@
  *
  * Logical combinators for combining conditions.
  * These mirror Rust's cfg combinators: all(), any(), not().
+ *
+ * Optimized with fast paths for common cases (0-3 conditions).
  */
 
 // =============================================================================
@@ -17,6 +19,8 @@
 /**
  * Returns true if all conditions are true.
  * Equivalent to Rust's `#[cfg(all(...))]`.
+ *
+ * Optimized for common cases of 0-3 conditions.
  *
  * @param conditions - Variable number of boolean conditions
  * @returns True if all conditions are true, false otherwise
@@ -29,12 +33,32 @@
  * ```
  */
 export function all(...conditions: boolean[]): boolean {
-  return conditions.every((c) => c);
+  const len = conditions.length;
+
+  // Fast paths for common cases
+  switch (len) {
+    case 0:
+      return true;
+    case 1:
+      return conditions[0];
+    case 2:
+      return conditions[0] && conditions[1];
+    case 3:
+      return conditions[0] && conditions[1] && conditions[2];
+    default:
+      // General case: use loop (avoids iterator overhead of .every())
+      for (let i = 0; i < len; i++) {
+        if (!conditions[i]) return false;
+      }
+      return true;
+  }
 }
 
 /**
  * Returns true if any condition is true.
  * Equivalent to Rust's `#[cfg(any(...))]`.
+ *
+ * Optimized for common cases of 0-3 conditions.
  *
  * @param conditions - Variable number of boolean conditions
  * @returns True if at least one condition is true, false otherwise
@@ -47,7 +71,25 @@ export function all(...conditions: boolean[]): boolean {
  * ```
  */
 export function any(...conditions: boolean[]): boolean {
-  return conditions.some((c) => c);
+  const len = conditions.length;
+
+  // Fast paths for common cases
+  switch (len) {
+    case 0:
+      return false;
+    case 1:
+      return conditions[0];
+    case 2:
+      return conditions[0] || conditions[1];
+    case 3:
+      return conditions[0] || conditions[1] || conditions[2];
+    default:
+      // General case: use loop (avoids iterator overhead of .some())
+      for (let i = 0; i < len; i++) {
+        if (conditions[i]) return true;
+      }
+      return false;
+  }
 }
 
 /**

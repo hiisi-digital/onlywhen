@@ -7,78 +7,95 @@
  * @module detection
  *
  * Runtime, platform, and architecture detection utilities.
- * This module provides the core detection logic used by onlywhen.
+ *
+ * All detection is performed once at module load time and cached.
+ * The values are immutable after initialization.
  */
 
 import type { Architecture, Platform, RuntimeName } from "./types.ts";
 
 // =============================================================================
-// Global References (avoiding typeof reference errors)
+// Global References
 // =============================================================================
 
+// Cache global references once to avoid repeated property access
 // deno-lint-ignore no-explicit-any
-const globalDeno = (globalThis as any).Deno;
-// deno-lint-ignore no-explicit-any
-const globalProcess = (globalThis as any).process;
-// deno-lint-ignore no-explicit-any
-const globalWindow = (globalThis as any).window;
-// deno-lint-ignore no-explicit-any
-const globalNavigator = (globalThis as any).navigator;
+const g = globalThis as any;
+const globalDeno = g.Deno;
+const globalProcess = g.process;
+const globalWindow = g.window;
+const globalNavigator = g.navigator;
 
 // =============================================================================
-// Runtime Detection
+// Runtime Detection (evaluated once)
 // =============================================================================
 
 /**
  * Whether the current runtime is Deno.
  */
-export const isDeno: boolean = typeof globalDeno !== "undefined" &&
-  typeof globalDeno.version !== "undefined";
+export const isDeno: boolean = globalDeno !== undefined && globalDeno.version !== undefined;
 
 /**
  * Whether the current runtime is Bun.
- * Note: Bun also sets process.versions.node, so we check for Bun first.
+ * Checked before Node since Bun also sets process.versions.node.
  */
-export const isBun: boolean = typeof globalProcess !== "undefined" &&
-  typeof globalProcess.versions?.bun !== "undefined";
+export const isBun: boolean = globalProcess !== undefined &&
+  globalProcess.versions?.bun !== undefined;
 
 /**
- * Whether the current runtime is Node.js (but not Bun or Deno).
- * Note: Deno 2+ provides process for Node compatibility, so we must exclude it.
+ * Whether the current runtime is Node.js.
+ * Excludes Bun and Deno (Deno 2+ provides process for Node compatibility).
  */
-export const isNode: boolean = typeof globalProcess !== "undefined" &&
-  typeof globalProcess.versions?.node !== "undefined" &&
+export const isNode: boolean = globalProcess !== undefined &&
+  globalProcess.versions?.node !== undefined &&
   !isBun &&
   !isDeno;
 
 /**
  * Whether the current runtime is a browser.
+ * Excludes server-side runtimes that may have window/navigator.
  */
-export const isBrowser: boolean = typeof globalWindow !== "undefined" &&
-  typeof globalNavigator !== "undefined" &&
+export const isBrowser: boolean = globalWindow !== undefined &&
+  globalNavigator !== undefined &&
   !isDeno &&
   !isNode &&
   !isBun;
 
+// =============================================================================
+// Runtime Name (cached)
+// =============================================================================
+
+/**
+ * The detected runtime name, computed once.
+ */
+const detectedRuntimeName: RuntimeName = isDeno
+  ? "deno"
+  : isBun
+  ? "bun"
+  : isNode
+  ? "node"
+  : isBrowser
+  ? "browser"
+  : "unknown";
+
 /**
  * Gets the current runtime name.
+ *
+ * @returns The runtime identifier
  */
 export function getRuntimeName(): RuntimeName {
-  if (isDeno) return "deno";
-  if (isBun) return "bun";
-  if (isNode) return "node";
-  if (isBrowser) return "browser";
-  return "unknown";
+  return detectedRuntimeName;
 }
 
 // =============================================================================
-// Platform Detection
+// Platform Detection (evaluated once)
 // =============================================================================
 
 /**
- * Detects the current operating system / platform.
+ * Detects the current operating system.
  */
 function detectPlatform(): Platform {
+  // Deno
   if (isDeno) {
     const os = globalDeno.build?.os;
     if (os === "darwin") return "darwin";
@@ -87,64 +104,30 @@ function detectPlatform(): Platform {
     return "unknown";
   }
 
+  // Node.js or Bun
   if (isNode || isBun) {
-    const platform = globalProcess.platform;
-    if (platform === "darwin") return "darwin";
-    if (platform === "linux") return "linux";
-    if (platform === "win32") return "windows";
+    const p = globalProcess.platform;
+    if (p === "darwin") return "darwin";
+    if (p === "linux") return "linux";
+    if (p === "win32") return "windows";
     return "unknown";
   }
 
+  // Browser
   if (isBrowser && globalNavigator?.platform) {
-    const platform = globalNavigator.platform.toLowerCase();
-    if (platform.includes("mac")) return "darwin";
-    if (platform.includes("linux")) return "linux";
-    if (platform.includes("win")) return "windows";
+    const p = globalNavigator.platform.toLowerCase();
+    if (p.includes("mac")) return "darwin";
+    if (p.includes("linux")) return "linux";
+    if (p.includes("win")) return "windows";
   }
 
   return "unknown";
 }
-
-/**
- * Detects the current CPU architecture.
- */
-function detectArch(): Architecture {
-  if (isDeno) {
-    const arch = globalDeno.build?.arch;
-    if (arch === "x86_64") return "x86_64";
-    if (arch === "aarch64") return "aarch64";
-    return "unknown";
-  }
-
-  if (isNode || isBun) {
-    const arch = globalProcess.arch;
-    if (arch === "x64") return "x86_64";
-    if (arch === "arm64") return "aarch64";
-    if (arch === "arm") return "arm";
-    if (arch === "ia32" || arch === "x86") return "x86";
-    return "unknown";
-  }
-
-  return "unknown";
-}
-
-// =============================================================================
-// Detected Values (evaluated once at module load)
-// =============================================================================
 
 /**
  * The detected platform.
  */
 export const platform: Platform = detectPlatform();
-
-/**
- * The detected architecture.
- */
-export const arch: Architecture = detectArch();
-
-// =============================================================================
-// Platform Booleans
-// =============================================================================
 
 /**
  * True when running on macOS.
@@ -162,8 +145,38 @@ export const isLinux: boolean = platform === "linux";
 export const isWindows: boolean = platform === "windows";
 
 // =============================================================================
-// Architecture Booleans
+// Architecture Detection (evaluated once)
 // =============================================================================
+
+/**
+ * Detects the current CPU architecture.
+ */
+function detectArch(): Architecture {
+  // Deno
+  if (isDeno) {
+    const a = globalDeno.build?.arch;
+    if (a === "x86_64") return "x86_64";
+    if (a === "aarch64") return "aarch64";
+    return "unknown";
+  }
+
+  // Node.js or Bun
+  if (isNode || isBun) {
+    const a = globalProcess.arch;
+    if (a === "x64") return "x86_64";
+    if (a === "arm64") return "aarch64";
+    if (a === "arm") return "arm";
+    if (a === "ia32" || a === "x86") return "x86";
+    return "unknown";
+  }
+
+  return "unknown";
+}
+
+/**
+ * The detected CPU architecture.
+ */
+export const arch: Architecture = detectArch();
 
 /**
  * True when running on x86_64 architecture.
