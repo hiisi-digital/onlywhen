@@ -36,6 +36,41 @@ export const DEFAULT_MODULE_SPECIFIERS: readonly string[] = [
  */
 export const DEFAULT_EXPORT_NAME = "onlywhen";
 
+/**
+ * Namespace export names for ergonomic imports.
+ * These are exported as `platform`, `runtime`, `arch` from the main module.
+ */
+export const NAMESPACE_EXPORTS = {
+  /** Platform namespace - `platform.darwin`, `platform.linux`, `platform.windows` */
+  platform: {
+    darwin: "darwin",
+    linux: "linux",
+    windows: "windows",
+  } as Record<string, TargetPlatform>,
+  /** Runtime namespace - `runtime.deno`, `runtime.node`, `runtime.bun`, `runtime.browser` */
+  runtime: {
+    deno: "deno",
+    node: "node",
+    bun: "bun",
+    browser: "browser",
+  } as Record<string, TargetRuntime>,
+  /** Architecture namespace - `arch.x64`, `arch.arm64` */
+  arch: {
+    x64: "x64",
+    arm64: "arm64",
+  } as Record<string, TargetArch>,
+} as const;
+
+/**
+ * Combinator function names that can be imported directly.
+ * e.g., `import { all, any, not } from "@hiisi/onlywhen"`
+ */
+export const COMBINATOR_EXPORT_NAMES: ReadonlySet<string> = new Set([
+  "all",
+  "any",
+  "not",
+]);
+
 // =============================================================================
 // Property Mappings
 // =============================================================================

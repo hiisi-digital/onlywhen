@@ -38,6 +38,19 @@
  * @onlywhen(onlywhen.darwin)
  * class MacOnly {}
  * ```
+ *
+ * @example Ergonomic imports (Rust-like syntax)
+ * ```ts
+ * import { onlywhen, platform, runtime, arch, all } from "@hiisi/onlywhen";
+ *
+ * // Much cleaner than onlywhen.all(onlywhen.linux, onlywhen.x64)
+ * @onlywhen(all(platform.linux, arch.x64))
+ * class LinuxX64Only {}
+ *
+ * if (runtime.node) {
+ *   nodeSpecificCode();
+ * }
+ * ```
  */
 
 // =============================================================================
@@ -47,11 +60,27 @@
 export { onlywhen } from "./src/cfg.ts";
 
 // =============================================================================
-// Detection
+// Detection - Namespace Objects (primary API)
+// =============================================================================
+
+// Namespace objects for cleaner, Rust-like ergonomics:
+//   platform.darwin, platform.linux, platform.windows
+//   runtime.deno, runtime.node, runtime.bun, runtime.browser
+//   arch.x64, arch.arm64
+export { arch, platform, runtime } from "./src/detection.ts";
+
+// =============================================================================
+// Detection - String Values
+// =============================================================================
+
+// String values for when you need the actual detected value
+export { archName, platformName } from "./src/detection.ts";
+
+// =============================================================================
+// Detection - Individual Booleans (legacy, prefer namespace objects)
 // =============================================================================
 
 export {
-  arch,
   getRuntimeName,
   isArm64,
   isBrowser,
@@ -62,7 +91,6 @@ export {
   isNode,
   isWindows,
   isX64,
-  platform,
 } from "./src/detection.ts";
 
 // =============================================================================
@@ -102,6 +130,7 @@ export { match, matchAsync } from "./src/match.ts";
 
 export type {
   Architecture,
+  ArchNamespace,
   AsyncMatchHandlers,
   Cfg,
   CfgDecorator,
@@ -110,5 +139,7 @@ export type {
   MatchHandlers,
   MethodDecorator,
   Platform,
+  PlatformNamespace,
   RuntimeName,
+  RuntimeNamespace,
 } from "./src/types.ts";

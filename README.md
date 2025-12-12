@@ -19,27 +19,52 @@ branch on them, or use them as decorators. Simple enough that tooling can inline
 them (static analysis pass included).
 
 ```typescript
-import { onlywhen } from "@hiisi/onlywhen";
+import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
 
 // Boolean checks
-if (onlywhen.darwin) {
+if (platform.darwin) {
   macSpecificCode();
 }
 
 // Short-circuit
-onlywhen.deno && denoSpecificCode();
+runtime.deno && denoSpecificCode();
 
-// Combinators
+// Combinators (Rust-like syntax)
+if (all(platform.linux, arch.x64)) {
+  linuxX64Code();
+}
+
+// Decorators
+@onlywhen(platform.darwin)
+class MacOnlyFeature {
+  // Becomes an inert class on other platforms
+}
+
+// Combined with decorators
+@onlywhen(all(platform.linux, arch.arm64))
+class LinuxArm64Only {}
+```
+
+### Classic API
+
+You can also use the `onlywhen` object directly:
+
+```typescript
+import { onlywhen } from "@hiisi/onlywhen";
+
+if (onlywhen.darwin) {
+  macSpecificCode();
+}
+
 if (onlywhen.all(onlywhen.node, onlywhen.linux)) {
   nodeOnLinuxCode();
 }
 
-// Decorators
 @onlywhen(onlywhen.darwin)
-class MacOnlyFeature {
-  // Becomes an inert class on other platforms
-}
+class MacOnlyFeature {}
 ```
+
+Both styles work and can be mixed. Use whichever you prefer.
 
 ## Installation
 
@@ -55,10 +80,10 @@ As a library:
 
 ```typescript
 // Deno / JSR
-import { onlywhen } from "jsr:@hiisi/onlywhen";
+import { all, arch, onlywhen, platform, runtime } from "jsr:@hiisi/onlywhen";
 
 // Node.js
-import { onlywhen } from "onlywhen";
+import { all, arch, onlywhen, platform, runtime } from "onlywhen";
 ```
 
 Or add to your project:
@@ -67,14 +92,14 @@ Or add to your project:
 // deno.json
 {
   "imports": {
-    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.2"
+    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.4"
   }
 }
 
 // package.json
 {
   "dependencies": {
-    "onlywhen": "^0.2"
+    "onlywhen": "^0.4"
   }
 }
 ```
@@ -84,38 +109,49 @@ Or add to your project:
 ### Platform Detection
 
 ```typescript
-onlywhen.darwin; // true on macOS
-onlywhen.linux; // true on Linux
-onlywhen.windows; // true on Windows
+import { platform } from "@hiisi/onlywhen";
+
+platform.darwin; // true on macOS
+platform.linux; // true on Linux
+platform.windows; // true on Windows
 ```
 
 ### Runtime Detection
 
 ```typescript
-onlywhen.deno; // true in Deno
-onlywhen.node; // true in Node.js
-onlywhen.bun; // true in Bun
-onlywhen.browser; // true in browsers
+import { runtime } from "@hiisi/onlywhen";
+
+runtime.deno; // true in Deno
+runtime.node; // true in Node.js
+runtime.bun; // true in Bun
+runtime.browser; // true in browsers
 ```
 
 ### Architecture Detection
 
 ```typescript
-onlywhen.x64; // true on x86_64
-onlywhen.arm64; // true on aarch64 / Apple Silicon
+import { arch } from "@hiisi/onlywhen";
+
+arch.x64; // true on x86_64
+arch.arm64; // true on aarch64 / Apple Silicon
 ```
 
 ### Combinators
 
 ```typescript
+import { all, any, arch, not, platform } from "@hiisi/onlywhen";
+
 // All conditions must be true
-onlywhen.all(onlywhen.darwin, onlywhen.arm64);
+all(platform.darwin, arch.arm64);
 
 // At least one must be true
-onlywhen.any(onlywhen.node, onlywhen.bun);
+any(platform.linux, platform.darwin);
 
 // Negation
-onlywhen.not(onlywhen.windows);
+not(platform.windows);
+
+// Nesting
+all(platform.darwin, not(arch.x64));
 ```
 
 ### Feature Flags
@@ -131,6 +167,8 @@ Define features in your `deno.json` or `package.json`:
 Check them at runtime:
 
 ```typescript
+import { onlywhen } from "@hiisi/onlywhen";
+
 onlywhen.feature("experimental"); // true if listed
 onlywhen.features; // Set<string> of all features
 ```
@@ -138,18 +176,20 @@ onlywhen.features; // Set<string> of all features
 ### Decorators
 
 ```typescript
+import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
+
 // Class becomes empty if condition is false
-@onlywhen(onlywhen.darwin)
+@onlywhen(platform.darwin)
 class MacFeatures {
   setup() {/* ... */}
 }
 
 // Method becomes no-op if condition is false
 class App {
-  @onlywhen(onlywhen.deno)
+  @onlywhen(runtime.deno)
   denoMethod() {/* ... */}
 
-  @onlywhen(onlywhen.all(onlywhen.linux, onlywhen.x64))
+  @onlywhen(all(platform.linux, arch.x64))
   linuxX64Method() {/* ... */}
 
   @onlywhen(onlywhen.feature("experimental"))
@@ -172,15 +212,27 @@ const result = match({
 });
 ```
 
+### String Values
+
+If you need the actual detected values as strings (not booleans):
+
+```typescript
+import { archName, getRuntimeName, platformName } from "@hiisi/onlywhen";
+
+console.log(platformName); // "darwin" | "linux" | "windows" | "unknown"
+console.log(archName); // "x86_64" | "aarch64" | "arm" | "x86" | "unknown"
+console.log(getRuntimeName()); // "deno" | "node" | "bun" | "browser" | "unknown"
+```
+
 ## Comparison to Rust
 
-| Rust                                        | onlywhen                                                |
-| :------------------------------------------ | :------------------------------------------------------ |
-| `#[cfg(target_os = "macos")]`               | `@onlywhen(onlywhen.darwin)`                            |
-| `#[cfg(all(unix, target_arch = "x86_64"))]` | `@onlywhen(onlywhen.all(onlywhen.linux, onlywhen.x64))` |
-| `cfg!(target_os = "windows")`               | `onlywhen.windows`                                      |
-| `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))`           |
-| `#[cfg(not(windows))]`                      | `@onlywhen(onlywhen.not(onlywhen.windows))`             |
+| Rust                                        | onlywhen                                      |
+| :------------------------------------------ | :-------------------------------------------- |
+| `#[cfg(target_os = "macos")]`               | `@onlywhen(platform.darwin)`                  |
+| `#[cfg(all(unix, target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))`    |
+| `cfg!(target_os = "windows")`               | `platform.windows`                            |
+| `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))` |
+| `#[cfg(not(windows))]`                      | `@onlywhen(not(platform.windows))`            |
 
 ## Static Analysis Transform
 
@@ -196,7 +248,7 @@ size and removing code that would never run.
 - **Building platform-specific binaries** - When using `deno compile` or building
   separate npm packages per platform.
 
-- **Reducing bundle size** - Code behind `if (onlywhen.darwin)` on a Linux deploy
+- **Reducing bundle size** - Code behind `if (platform.darwin)` on a Linux deploy
   is dead weight. The transform removes it.
 
 - **Feature flag cleanup** - Ship builds with specific features baked in or out.
@@ -215,9 +267,11 @@ size and removing code that would never run.
 import { transform } from "@hiisi/onlywhen/transform";
 
 const source = `
-import { onlywhen } from "@hiisi/onlywhen";
-if (onlywhen.darwin) { macCode(); }
-if (onlywhen.linux) { linuxCode(); }
+import { platform, runtime, all } from "@hiisi/onlywhen";
+
+if (platform.darwin) { macCode(); }
+if (platform.linux) { linuxCode(); }
+const check = all(platform.linux, runtime.node);
 `;
 
 const result = await transform(source, {
@@ -230,6 +284,7 @@ const result = await transform(source, {
 // result.code:
 // if (false) { macCode(); }
 // if (true) { linuxCode(); }
+// const check = true;
 //
 // A minifier will then remove the dead `if (false)` branch entirely.
 ```
@@ -337,14 +392,15 @@ for (const file of files) {
 
 ### What gets transformed
 
-| Expression                       | With `{ platform: "darwin" }` |
-| :------------------------------- | :---------------------------- |
-| `onlywhen.darwin`                | `true`                        |
-| `onlywhen.linux`                 | `false`                       |
-| `onlywhen.all(darwin, arm64)`    | `true` (if arch is arm64)     |
-| `onlywhen.any(darwin, linux)`    | `true`                        |
-| `onlywhen.not(darwin)`           | `false`                       |
-| `onlywhen.feature("production")` | `true` (if in features list)  |
+| Expression                             | With `{ platform: "darwin" }` |
+| :------------------------------------- | :---------------------------- |
+| `platform.darwin`                      | `true`                        |
+| `platform.linux`                       | `false`                       |
+| `onlywhen.darwin`                      | `true`                        |
+| `all(platform.darwin, arch.arm64)`     | `true` (if arch is arm64)     |
+| `any(platform.darwin, platform.linux)` | `true`                        |
+| `not(platform.darwin)`                 | `false`                       |
+| `onlywhen.feature("production")`       | `true` (if in features list)  |
 
 Properties not in your config stay as runtime checks. This lets you partially
 bake values while keeping others dynamic.

@@ -304,6 +304,138 @@ const x = onlywhen.unknownProperty;`;
 // Transform Info Tests
 // =============================================================================
 
+// =============================================================================
+// Namespace Object Tests
+// =============================================================================
+
+describe("Transform Namespace Objects", () => {
+  it("should transform platform.darwin to true when platform is darwin", async () => {
+    const source = `import { platform } from "@hiisi/onlywhen";
+if (platform.darwin) { console.log("mac"); }`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    assertStringIncludes(result.code, "if (true)");
+    assertEquals(result.transformCount, 1);
+    assertEquals(result.transformations[0].type, "property");
+  });
+
+  it("should transform platform.linux to false when platform is darwin", async () => {
+    const source = `import { platform } from "@hiisi/onlywhen";
+if (platform.linux) { console.log("linux"); }`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    assertStringIncludes(result.code, "if (false)");
+    assertEquals(result.transformCount, 1);
+  });
+
+  it("should transform runtime.node to true when runtime is node", async () => {
+    const source = `import { runtime } from "@hiisi/onlywhen";
+if (runtime.node) { console.log("node"); }`;
+
+    const result = await transform(source, { runtime: "node" });
+
+    assertStringIncludes(result.code, "if (true)");
+    assertEquals(result.transformCount, 1);
+  });
+
+  it("should transform arch.x64 to true when arch is x64", async () => {
+    const source = `import { arch } from "@hiisi/onlywhen";
+if (arch.x64) { console.log("x64"); }`;
+
+    const result = await transform(source, { arch: "x64" });
+
+    assertStringIncludes(result.code, "if (true)");
+    assertEquals(result.transformCount, 1);
+  });
+
+  it("should transform multiple namespace properties", async () => {
+    const source = `import { platform, runtime, arch } from "@hiisi/onlywhen";
+const isMac = platform.darwin;
+const isNode = runtime.node;
+const isArm = arch.arm64;`;
+
+    const result = await transform(source, {
+      platform: "darwin",
+      runtime: "deno",
+      arch: "arm64",
+    });
+
+    assertStringIncludes(result.code, "isMac = true");
+    assertStringIncludes(result.code, "isNode = false");
+    assertStringIncludes(result.code, "isArm = true");
+    assertEquals(result.transformCount, 3);
+  });
+
+  it("should handle aliased namespace imports", async () => {
+    const source = `import { platform as os } from "@hiisi/onlywhen";
+if (os.darwin) { console.log("mac"); }`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    assertStringIncludes(result.code, "if (true)");
+    assertEquals(result.transformCount, 1);
+  });
+});
+
+// =============================================================================
+// Standalone Combinator Tests
+// =============================================================================
+
+describe("Transform Standalone Combinators", () => {
+  it("should evaluate standalone all() with namespace args", async () => {
+    const source = `import { platform, arch, all } from "@hiisi/onlywhen";
+const result = all(platform.darwin, arch.arm64);`;
+
+    const result = await transform(source, { platform: "darwin", arch: "arm64" });
+
+    assertStringIncludes(result.code, "result = true");
+  });
+
+  it("should evaluate standalone any() with namespace args", async () => {
+    const source = `import { platform, any } from "@hiisi/onlywhen";
+const result = any(platform.darwin, platform.linux);`;
+
+    const result = await transform(source, { platform: "linux" });
+
+    assertStringIncludes(result.code, "result = true");
+  });
+
+  it("should evaluate standalone not() with namespace arg", async () => {
+    const source = `import { platform, not } from "@hiisi/onlywhen";
+const notMac = not(platform.darwin);`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    assertStringIncludes(result.code, "notMac = false");
+  });
+
+  it("should work with decorators using standalone combinators", async () => {
+    const source = `import { onlywhen, platform, arch, all } from "@hiisi/onlywhen";
+
+@onlywhen(all(platform.linux, arch.x64))
+class LinuxX64Only {}`;
+
+    const result = await transform(source, { platform: "darwin", arch: "arm64" });
+
+    assertStringIncludes(result.code, "@onlywhen(false)");
+  });
+
+  it("should handle aliased combinator imports", async () => {
+    const source = `import { platform, all as every } from "@hiisi/onlywhen";
+const result = every(platform.darwin, platform.darwin);`;
+
+    const result = await transform(source, { platform: "darwin" });
+
+    assertStringIncludes(result.code, "result = true");
+  });
+});
+
+// =============================================================================
+// Transform Info Tests
+// =============================================================================
+
 describe("Transform Info", () => {
   it("should include line and column in transformation info", async () => {
     const source = `import { onlywhen } from "@hiisi/onlywhen";
