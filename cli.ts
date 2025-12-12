@@ -32,7 +32,7 @@ import { type TargetConfig, transform } from "./src/transform/mod.ts";
 // Version
 // =============================================================================
 
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 
 // =============================================================================
 // Help Text
