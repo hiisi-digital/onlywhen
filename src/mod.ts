@@ -7,7 +7,8 @@
  * @module src/mod
  *
  * Internal module exports for onlywhen.
- * Re-exports all functionality from submodules.
+ *
+ * Re-exports all functionality from submodules for use by the root mod.ts.
  */
 
 // =============================================================================

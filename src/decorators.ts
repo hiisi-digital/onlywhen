@@ -13,6 +13,18 @@
 import type { CfgDecorator } from "./types.ts";
 
 // =============================================================================
+// Shared No-Op Function
+// =============================================================================
+
+/**
+ * Shared no-op function used for all disabled methods.
+ * Using a single function instance reduces memory allocation.
+ */
+function noop(): undefined {
+  return undefined;
+}
+
+// =============================================================================
 // Decorator Factory
 // =============================================================================
 
@@ -20,7 +32,7 @@ import type { CfgDecorator } from "./types.ts";
  * Creates a decorator that conditionally enables a class or method.
  *
  * When the condition is false:
- * - Class decorators return an empty class
+ * - Class decorators return an inert class with no-op methods
  * - Method decorators replace the method with a no-op
  *
  * @param condition - The boolean condition to evaluate
@@ -28,7 +40,7 @@ import type { CfgDecorator } from "./types.ts";
  *
  * @example
  * ```ts
- * // Class decorator - becomes empty class if condition is false
+ * // Class decorator - becomes inert class if condition is false
  * @createCfgDecorator(onlywhen.darwin)
  * class MacFeatures {
  *   setup() { ... }
@@ -42,15 +54,26 @@ import type { CfgDecorator } from "./types.ts";
  * ```
  */
 export function createCfgDecorator(condition: boolean): CfgDecorator {
+  // Fast path: if condition is true, return a pass-through decorator
+  if (condition) {
+    // deno-lint-ignore no-explicit-any
+    return function passthrough<T>(target: T, _propertyKey?: string | symbol, descriptor?: any): T {
+      return descriptor !== undefined ? descriptor : target;
+    } as CfgDecorator;
+  }
+
+  // Condition is false: return a decorator that disables
   // deno-lint-ignore no-explicit-any
-  return function decorator(target: any, propertyKey?: string | symbol, descriptor?: any): any {
+  return function disabler(target: any, propertyKey?: string | symbol, descriptor?: any): any {
     // Determine if this is a class decorator or method decorator
     if (propertyKey === undefined && descriptor === undefined) {
       // Class decorator
-      return handleClassDecorator(condition, target);
-    } else if (descriptor !== undefined) {
+      return createInertClass(target);
+    }
+
+    if (descriptor !== undefined) {
       // Method decorator
-      return handleMethodDecorator(condition, descriptor);
+      return createNoopDescriptor(descriptor);
     }
 
     // Fallback: return as-is
@@ -59,77 +82,83 @@ export function createCfgDecorator(condition: boolean): CfgDecorator {
 }
 
 // =============================================================================
-// Class Decorator Handler
+// Inert Class Factory
 // =============================================================================
 
 /**
- * Handles class decoration.
- * If the condition is false, returns an inert class that has no-op methods.
+ * Creates an inert class that replaces all methods with no-ops.
+ * The inert class is created once at decoration time, not per-instantiation.
  */
-function handleClassDecorator<T extends new (...args: unknown[]) => unknown>(
-  condition: boolean,
-  target: T,
-): T {
-  if (condition) {
-    // Condition is true: return the original class
-    return target;
-  }
+function createInertClass<T extends new (...args: unknown[]) => unknown>(target: T): T {
+  // Create the inert prototype once, upfront
+  const inertPrototype = Object.create(target.prototype);
 
-  // Condition is false: return a class with no-op methods
-  // We create a new class that doesn't extend the original to avoid constructor issues
-  // deno-lint-ignore no-explicit-any
-  const InertClass = function (this: any, ..._args: unknown[]): void {
-    // No-op constructor - just create an empty object
-    const propertyNames = Object.getOwnPropertyNames(target.prototype);
-    for (const name of propertyNames) {
-      if (name !== "constructor") {
-        this[name] = function (): void {
-          // No-op
-        };
+  // Replace all methods on the prototype with no-ops
+  const propertyNames = Object.getOwnPropertyNames(target.prototype);
+  for (let i = 0; i < propertyNames.length; i++) {
+    const name = propertyNames[i];
+    if (name !== "constructor") {
+      const descriptor = Object.getOwnPropertyDescriptor(target.prototype, name);
+      if (descriptor && typeof descriptor.value === "function") {
+        inertPrototype[name] = noop;
       }
     }
+  }
+
+  // Create the inert constructor function
+  // deno-lint-ignore no-explicit-any
+  const InertClass = function (this: any): void {
+    // No-op constructor - instance already has inert prototype
   } as unknown as T;
 
-  // Set up prototype chain for instanceof checks
-  InertClass.prototype = Object.create(target.prototype);
-  InertClass.prototype.constructor = InertClass;
+  // Set up the prototype
+  InertClass.prototype = inertPrototype;
+  inertPrototype.constructor = InertClass;
 
   // Preserve the class name for debugging
   Object.defineProperty(InertClass, "name", {
     value: target.name,
     writable: false,
+    configurable: true,
   });
+
+  // Copy static properties (except prototype, length, name)
+  const staticProps = Object.getOwnPropertyNames(target);
+  for (let i = 0; i < staticProps.length; i++) {
+    const prop = staticProps[i];
+    if (prop !== "prototype" && prop !== "length" && prop !== "name") {
+      try {
+        const descriptor = Object.getOwnPropertyDescriptor(target, prop);
+        if (descriptor) {
+          Object.defineProperty(InertClass, prop, descriptor);
+        }
+      } catch {
+        // Skip properties that can't be copied
+      }
+    }
+  }
 
   return InertClass;
 }
 
 // =============================================================================
-// Method Decorator Handler
+// No-Op Descriptor Factory
 // =============================================================================
 
 /**
- * Handles method decoration.
- * If the condition is false, replaces the method with a no-op.
+ * Creates a descriptor with the method replaced by a no-op.
  */
-function handleMethodDecorator<T>(
-  condition: boolean,
+function createNoopDescriptor<T>(
   descriptor: TypedPropertyDescriptor<T>,
 ): TypedPropertyDescriptor<T> {
-  if (condition) {
-    // Condition is true: return the original descriptor
-    return descriptor;
+  // Only replace if the descriptor has a function value
+  if (typeof descriptor.value === "function") {
+    return {
+      ...descriptor,
+      value: noop as T,
+    };
   }
 
-  // Condition is false: replace the method with a no-op
-  const originalMethod = descriptor.value;
-
-  if (typeof originalMethod === "function") {
-    // deno-lint-ignore no-explicit-any
-    descriptor.value = function (this: unknown, ..._args: unknown[]): any {
-      // No-op: return undefined
-      return undefined;
-    } as T;
-  }
-
+  // For getters/setters, return as-is (could be extended later)
   return descriptor;
 }

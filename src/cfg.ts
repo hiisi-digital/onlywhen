@@ -6,8 +6,10 @@
 /**
  * @module cfg
  *
- * The main onlywhen object that combines detection, combinators,
- * features, and decorator functionality into a single API.
+ * The main `onlywhen` object.
+ *
+ * Combines detection, combinators, features, and decorator functionality
+ * into a single, ergonomic API.
  */
 
 import { all, any, not } from "./combinators.ts";
@@ -27,58 +29,91 @@ import { getAllFeatures, hasFeature } from "./features.ts";
 import type { Cfg } from "./types.ts";
 
 // =============================================================================
-// Main onlywhen Object
+// onlywhen Factory
 // =============================================================================
 
 /**
- * Creates the main onlywhen object that is both callable (as a decorator)
- * and has properties for detection and combinators.
+ * Creates the main `onlywhen` object.
+ *
+ * The object is callable (returns a decorator) and has boolean properties
+ * for platform/runtime/architecture detection.
  */
 function createOnlywhen(): Cfg {
-  // The base function that creates decorators
+  // The decorator factory function
   const decoratorFactory = (condition: boolean) => createCfgDecorator(condition);
 
-  // Assign all properties to the function
-  const onlywhen = Object.assign(decoratorFactory, {
-    // Platform detection
+  // Build the object with all properties
+  const cfg = Object.assign(decoratorFactory, {
+    // Platform detection (cached booleans)
     darwin: isDarwin,
     linux: isLinux,
     windows: isWindows,
 
-    // Runtime detection
+    // Runtime detection (cached booleans)
     deno: isDeno,
     node: isNode,
     bun: isBun,
     browser: isBrowser,
 
-    // Architecture detection
+    // Architecture detection (cached booleans)
     x64: isX64,
     arm64: isArm64,
 
-    // Combinators
+    // Combinators (function references)
     all,
     any,
     not,
 
-    // Features
+    // Feature flag access
     feature: hasFeature,
+
+    // Getter for features set
     get features(): ReadonlySet<string> {
       return getAllFeatures();
     },
   });
 
-  // Freeze to prevent modification
-  return Object.freeze(onlywhen) as Cfg;
+  // Freeze to prevent modification and enable potential V8 optimizations
+  return Object.freeze(cfg) as Cfg;
 }
 
+// =============================================================================
+// Export
+// =============================================================================
+
 /**
- * The main onlywhen object.
+ * The main `onlywhen` object.
  *
- * Use it for:
- * - Boolean checks: `if (onlywhen.darwin) { ... }`
- * - Short-circuit: `onlywhen.deno && denoCode()`
- * - Combinators: `onlywhen.all(onlywhen.node, onlywhen.linux)`
- * - Decorators: `@onlywhen(onlywhen.darwin)`
- * - Features: `onlywhen.feature("experimental")`
+ * @example Boolean checks
+ * ```ts
+ * if (onlywhen.darwin) {
+ *   macSpecificCode();
+ * }
+ * ```
+ *
+ * @example Short-circuit
+ * ```ts
+ * onlywhen.deno && denoCode();
+ * ```
+ *
+ * @example Combinators
+ * ```ts
+ * if (onlywhen.all(onlywhen.node, onlywhen.linux)) {
+ *   nodeOnLinuxCode();
+ * }
+ * ```
+ *
+ * @example Decorators
+ * ```ts
+ * @onlywhen(onlywhen.darwin)
+ * class MacOnly {}
+ * ```
+ *
+ * @example Feature flags
+ * ```ts
+ * if (onlywhen.feature("experimental")) {
+ *   experimentalCode();
+ * }
+ * ```
  */
 export const onlywhen: Cfg = createOnlywhen();

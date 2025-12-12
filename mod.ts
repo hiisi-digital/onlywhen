@@ -6,27 +6,35 @@
 /**
  * @module onlywhen
  *
- * Runtime configuration and conditional execution for JavaScript/TypeScript.
- * Inspired by Rust's `#[cfg()]` attribute.
+ * Conditional code based on platform, runtime, or feature flags.
  *
- * @example
+ * `onlywhen` picks up on platform, runtime, and architecture. You can combine them,
+ * branch on them, or use them as decorators. Simple enough that tooling can inline
+ * them (static analysis pass in the works).
+ *
+ * @example Boolean checks
  * ```ts
  * import { onlywhen } from "@hiisi/onlywhen";
  *
- * // Boolean checks
  * if (onlywhen.darwin) {
  *   macSpecificCode();
  * }
+ * ```
  *
- * // Short-circuit
+ * @example Short-circuit
+ * ```ts
  * onlywhen.deno && denoCode();
+ * ```
  *
- * // Combinators
+ * @example Combinators
+ * ```ts
  * if (onlywhen.all(onlywhen.node, onlywhen.linux)) {
  *   nodeOnLinuxCode();
  * }
+ * ```
  *
- * // Decorators
+ * @example Decorators
+ * ```ts
  * @onlywhen(onlywhen.darwin)
  * class MacOnly {}
  * ```
@@ -39,7 +47,7 @@
 export { onlywhen } from "./src/cfg.ts";
 
 // =============================================================================
-// Detection Utilities
+// Detection
 // =============================================================================
 
 export {
