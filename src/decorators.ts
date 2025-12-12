@@ -64,7 +64,7 @@ export function createCfgDecorator(condition: boolean): CfgDecorator {
 
 /**
  * Handles class decoration.
- * If the condition is false, returns an empty class.
+ * If the condition is false, returns an inert class that has no-op methods.
  */
 function handleClassDecorator<T extends new (...args: unknown[]) => unknown>(
   condition: boolean,
@@ -75,35 +75,32 @@ function handleClassDecorator<T extends new (...args: unknown[]) => unknown>(
     return target;
   }
 
-  // Condition is false: return an empty class that maintains the prototype chain
-  // This allows instanceof checks to still work, but the class is effectively inert
-  const EmptyClass = class extends (target as new (...args: unknown[]) => object) {
-    constructor(..._args: unknown[]) {
-      // Call parent with no-op behavior
-      super();
-      // Override all own properties to be no-ops
-      const propertyNames = Object.getOwnPropertyNames(target.prototype);
-      for (const name of propertyNames) {
-        if (name !== "constructor") {
-          // deno-lint-ignore no-explicit-any
-          (this as any)[name] = function (): void {
-            // No-op
-          };
-        }
+  // Condition is false: return a class with no-op methods
+  // We create a new class that doesn't extend the original to avoid constructor issues
+  // deno-lint-ignore no-explicit-any
+  const InertClass = function (this: any, ..._args: unknown[]): void {
+    // No-op constructor - just create an empty object
+    const propertyNames = Object.getOwnPropertyNames(target.prototype);
+    for (const name of propertyNames) {
+      if (name !== "constructor") {
+        this[name] = function (): void {
+          // No-op
+        };
       }
     }
-  };
+  } as unknown as T;
 
-  // Copy static properties
-  Object.setPrototypeOf(EmptyClass, Object.getPrototypeOf(target));
+  // Set up prototype chain for instanceof checks
+  InertClass.prototype = Object.create(target.prototype);
+  InertClass.prototype.constructor = InertClass;
 
   // Preserve the class name for debugging
-  Object.defineProperty(EmptyClass, "name", {
+  Object.defineProperty(InertClass, "name", {
     value: target.name,
     writable: false,
   });
 
-  return EmptyClass as T;
+  return InertClass;
 }
 
 // =============================================================================
