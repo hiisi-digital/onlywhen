@@ -16,7 +16,7 @@
 
 `onlywhen` picks up on platform, runtime, and architecture. You can combine them,
 branch on them, or use them as decorators. Simple enough that tooling can inline
-them (static analysis pass in the works).
+them (static analysis pass included).
 
 ```typescript
 import { onlywhen } from "@hiisi/onlywhen";
@@ -67,14 +67,14 @@ Or add to your project:
 // deno.json
 {
   "imports": {
-    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.1"
+    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.2"
   }
 }
 
 // package.json
 {
   "dependencies": {
-    "onlywhen": "^0.1"
+    "onlywhen": "^0.2"
   }
 }
 ```
@@ -184,8 +184,32 @@ const result = match({
 
 ## Static Analysis Transform
 
-The `@hiisi/onlywhen/transform` module provides build-time transformation of
-onlywhen expressions to boolean literals, enabling dead code elimination.
+The `@hiisi/onlywhen/transform` module replaces onlywhen expressions with boolean
+literals at build time. Bundlers can then eliminate dead branches, reducing bundle
+size and removing code that would never run.
+
+### When to use it
+
+- **Deploying to a known environment** - If you're deploying to Linux servers,
+  bake in `platform: "linux"` and let the bundler remove Windows/macOS code paths.
+
+- **Building platform-specific binaries** - When using `deno compile` or building
+  separate npm packages per platform.
+
+- **Reducing bundle size** - Code behind `if (onlywhen.darwin)` on a Linux deploy
+  is dead weight. The transform removes it.
+
+- **Feature flag cleanup** - Ship builds with specific features baked in or out.
+
+### When NOT to use it
+
+- **Building libraries for others** - Don't bake in platform assumptions. Let
+  consumers do their own transforms or use runtime detection.
+
+- **Cross-platform packages** - If the same bundle runs everywhere, keep runtime
+  detection.
+
+### API usage
 
 ```typescript
 import { transform } from "@hiisi/onlywhen/transform";
@@ -197,25 +221,133 @@ if (onlywhen.linux) { linuxCode(); }
 `;
 
 const result = await transform(source, {
-  platform: "darwin",
+  platform: "linux",
   runtime: "node",
-  arch: "arm64",
-  features: ["experimental"],
+  arch: "x64",
+  features: ["production"],
 });
 
 // result.code:
-// if (true) { macCode(); }
-// if (false) { linuxCode(); }
+// if (false) { macCode(); }
+// if (true) { linuxCode(); }
+//
+// A minifier will then remove the dead `if (false)` branch entirely.
 ```
 
-The transform handles:
+### CLI usage
 
-- Property access: `onlywhen.darwin`, `onlywhen.node`, `onlywhen.x64`
-- Combinators: `onlywhen.all(...)`, `onlywhen.any(...)`, `onlywhen.not(...)`
-- Feature checks: `onlywhen.feature("name")`
-- Import aliases: `import { onlywhen as cfg } from "..."`
+```bash
+# Transform a file
+deno run -A jsr:@hiisi/onlywhen/cli transform \
+  --platform=linux --runtime=node \
+  src/app.ts -o dist/app.ts
 
-Properties not specified in the config are left as runtime checks.
+# Transform a directory
+deno run -A jsr:@hiisi/onlywhen/cli transform \
+  --platform=darwin --arch=arm64 \
+  src/ -o dist/
+```
+
+### Integration examples
+
+#### Deno compile
+
+Transform before compiling to a standalone binary:
+
+```jsonc
+// deno.json
+{
+  "tasks": {
+    "build:linux": "deno run -A jsr:@hiisi/onlywhen/cli transform --platform=linux --runtime=deno src/ -o .build/ && deno compile --target=x86_64-unknown-linux-gnu --output=myapp-linux .build/main.ts",
+    "build:macos": "deno run -A jsr:@hiisi/onlywhen/cli transform --platform=darwin --runtime=deno src/ -o .build/ && deno compile --target=aarch64-apple-darwin --output=myapp-macos .build/main.ts"
+  }
+}
+```
+
+#### npm package builds (dnt)
+
+Transform before running dnt to create Node-specific packages:
+
+```typescript
+// scripts/build-npm.ts
+import { transform } from "jsr:@hiisi/onlywhen/transform";
+import { build } from "jsr:@deno/dnt";
+
+// Transform source for Node.js target
+for await (const entry of Deno.readDir("src")) {
+  if (entry.name.endsWith(".ts")) {
+    const source = await Deno.readTextFile(`src/${entry.name}`);
+    const result = await transform(source, { runtime: "node" });
+    await Deno.writeTextFile(`.build/${entry.name}`, result.code);
+  }
+}
+
+// Build from transformed source
+await build({
+  entryPoints: [".build/mod.ts"],
+  outDir: "./npm",
+  // ...
+});
+```
+
+#### Deploy scripts
+
+Transform before deploying to a known environment:
+
+```bash
+#!/bin/bash
+# deploy.sh - Deploy to Linux servers
+
+# Transform for production Linux environment
+deno run -A jsr:@hiisi/onlywhen/cli transform \
+  --platform=linux \
+  --runtime=node \
+  --features=production \
+  src/ -o dist/
+
+# Bundle with your preferred bundler (dead code gets eliminated)
+npx esbuild dist/main.ts --bundle --minify --outfile=bundle.js
+
+# Deploy
+rsync -av bundle.js server:/app/
+```
+
+#### Custom build script
+
+```typescript
+// build.ts
+import { transform } from "@hiisi/onlywhen/transform";
+
+const files = ["src/main.ts", "src/utils.ts", "src/platform.ts"];
+
+for (const file of files) {
+  const source = await Deno.readTextFile(file);
+
+  const result = await transform(source, {
+    platform: Deno.build.os === "darwin" ? "darwin" : "linux",
+    runtime: "deno",
+    arch: Deno.build.arch === "aarch64" ? "arm64" : "x64",
+    features: Deno.env.get("FEATURES")?.split(",") ?? [],
+  });
+
+  console.log(`${file}: ${result.transformCount} replacements`);
+  await Deno.writeTextFile(file.replace("src/", "dist/"), result.code);
+}
+```
+
+### What gets transformed
+
+| Expression                       | With `{ platform: "darwin" }` |
+| :------------------------------- | :---------------------------- |
+| `onlywhen.darwin`                | `true`                        |
+| `onlywhen.linux`                 | `false`                       |
+| `onlywhen.all(darwin, arm64)`    | `true` (if arch is arm64)     |
+| `onlywhen.any(darwin, linux)`    | `true`                        |
+| `onlywhen.not(darwin)`           | `false`                       |
+| `onlywhen.feature("production")` | `true` (if in features list)  |
+
+Properties not in your config stay as runtime checks. This lets you partially
+bake values while keeping others dynamic.
 
 ## Support
 
