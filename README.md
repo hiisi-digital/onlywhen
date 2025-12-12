@@ -1,23 +1,32 @@
-# onlywhen
+# `onlywhen`
 
-> Runtime configuration and conditional execution for JavaScript/TypeScript — inspired by Rust's `#[cfg()]`
+<div align="center" style="text-align: center;">
 
+[![GitHub Stars](https://img.shields.io/github/stars/hiisi-digital/onlywhen.svg)](https://github.com/hiisi-digital/onlywhen/stargazers)
 [![JSR](https://jsr.io/badges/@hiisi/onlywhen)](https://jsr.io/@hiisi/onlywhen)
-[![License: MPL-2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![npm Version](https://img.shields.io/npm/v/onlywhen?logo=npm)](https://www.npmjs.com/package/onlywhen)
+[![GitHub Issues](https://img.shields.io/github/issues/hiisi-digital/onlywhen.svg)](https://github.com/hiisi-digital/onlywhen/issues)
+![License](https://img.shields.io/github/license/hiisi-digital/onlywhen?color=%23009689)
 
-## Overview
+> Conditional code based on platform, runtime, or feature flags.
 
-`onlywhen` provides a clean, ergonomic API for runtime detection and conditional execution across JavaScript runtimes and platforms. Write code that adapts to its environment with minimal boilerplate.
+</div>
+
+## What it does
+
+`onlywhen` picks up on platform, runtime, and architecture. You can combine them,
+branch on them, or use them as decorators. Simple enough that tooling can inline
+them (static analysis pass in the works).
 
 ```typescript
 import { onlywhen } from "@hiisi/onlywhen";
 
-// Simple boolean checks
+// Boolean checks
 if (onlywhen.darwin) {
   macSpecificCode();
 }
 
-// Short-circuit pattern
+// Short-circuit
 onlywhen.deno && denoSpecificCode();
 
 // Combinators
@@ -28,39 +37,49 @@ if (onlywhen.all(onlywhen.node, onlywhen.linux)) {
 // Decorators
 @onlywhen(onlywhen.darwin)
 class MacOnlyFeature {
-  // This class becomes inert on non-macOS platforms
+  // Becomes an inert class on other platforms
 }
 ```
 
 ## Installation
 
-### Deno / JSR
+```bash
+# npm / yarn / pnpm
+npm install onlywhen
 
-```typescript
-import { onlywhen } from "jsr:@hiisi/onlywhen";
+# Deno
+deno add jsr:@hiisi/onlywhen
 ```
 
-Or add to your `deno.json`:
+As a library:
 
-```json
+```typescript
+// Deno / JSR
+import { onlywhen } from "jsr:@hiisi/onlywhen";
+
+// Node.js
+import { onlywhen } from "onlywhen";
+```
+
+Or add to your project:
+
+```jsonc
+// deno.json
 {
   "imports": {
-    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.1.0"
+    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.1"
+  }
+}
+
+// package.json
+{
+  "dependencies": {
+    "onlywhen": "^0.1"
   }
 }
 ```
 
-### Node.js / Bun (npm)
-
-```bash
-npm install onlywhen
-```
-
-```typescript
-import { onlywhen } from "onlywhen";
-```
-
-## API
+## Usage
 
 ### Platform Detection
 
@@ -76,7 +95,7 @@ onlywhen.windows; // true on Windows
 onlywhen.deno; // true in Deno
 onlywhen.node; // true in Node.js
 onlywhen.bun; // true in Bun
-onlywhen.browser; // true in browser environments
+onlywhen.browser; // true in browsers
 ```
 
 ### Architecture Detection
@@ -92,7 +111,7 @@ onlywhen.arm64; // true on aarch64 / Apple Silicon
 // All conditions must be true
 onlywhen.all(onlywhen.darwin, onlywhen.arm64);
 
-// At least one condition must be true
+// At least one must be true
 onlywhen.any(onlywhen.node, onlywhen.bun);
 
 // Negation
@@ -105,31 +124,27 @@ Define features in your `deno.json` or `package.json`:
 
 ```json
 {
-  "features": ["experimental", "legacy_compat", "verbose_logging"]
+  "features": ["experimental", "legacy_compat"]
 }
 ```
 
-Then check them at runtime:
+Check them at runtime:
 
 ```typescript
-onlywhen.feature("experimental"); // true if in features array
-onlywhen.feature("nonexistent"); // false
-
-onlywhen.features; // Set<string> of all active features
+onlywhen.feature("experimental"); // true if listed
+onlywhen.features; // Set<string> of all features
 ```
 
 ### Decorators
 
-Use `onlywhen` as a decorator to conditionally enable classes or methods:
-
 ```typescript
-// Class decorator - becomes empty class if condition is false
+// Class becomes empty if condition is false
 @onlywhen(onlywhen.darwin)
 class MacFeatures {
   setup() {/* ... */}
 }
 
-// Method decorator - becomes no-op if condition is false
+// Method becomes no-op if condition is false
 class App {
   @onlywhen(onlywhen.deno)
   denoMethod() {/* ... */}
@@ -137,49 +152,12 @@ class App {
   @onlywhen(onlywhen.all(onlywhen.linux, onlywhen.x64))
   linuxX64Method() {/* ... */}
 
-  @onlywhen(onlywhen.not(onlywhen.windows))
-  posixMethod() {/* ... */}
-
   @onlywhen(onlywhen.feature("experimental"))
   experimentalMethod() {/* ... */}
 }
 ```
 
-## Usage Patterns
-
-### Pattern 1: If Statements
-
-```typescript
-if (onlywhen.darwin) {
-  macCode();
-}
-
-if (onlywhen.all(onlywhen.deno, onlywhen.darwin)) {
-  denoMacCode();
-}
-
-if (onlywhen.any(onlywhen.node, onlywhen.bun)) {
-  npmRuntimeCode();
-}
-
-if (onlywhen.not(onlywhen.windows)) {
-  unixCode();
-}
-
-if (onlywhen.feature("experimental")) {
-  experimentalCode();
-}
-```
-
-### Pattern 2: Short-Circuit
-
-```typescript
-onlywhen.darwin && macCode();
-onlywhen.deno && denoCode();
-onlywhen.feature("legacy") && legacyCode();
-```
-
-### Pattern 3: Runtime Matching
+### Runtime Matching
 
 ```typescript
 import { match } from "@hiisi/onlywhen";
@@ -197,24 +175,36 @@ const result = match({
 ## Comparison to Rust
 
 | Rust                                        | onlywhen                                                |
-| ------------------------------------------- | ------------------------------------------------------- |
+| :------------------------------------------ | :------------------------------------------------------ |
 | `#[cfg(target_os = "macos")]`               | `@onlywhen(onlywhen.darwin)`                            |
 | `#[cfg(all(unix, target_arch = "x86_64"))]` | `@onlywhen(onlywhen.all(onlywhen.linux, onlywhen.x64))` |
-| `cfg!(target_os = "windows")`               | `onlywhen.windows` (in `if`)                            |
+| `cfg!(target_os = "windows")`               | `onlywhen.windows`                                      |
 | `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))`           |
 | `#[cfg(not(windows))]`                      | `@onlywhen(onlywhen.not(onlywhen.windows))`             |
 
 ## Future: Static Analysis
 
-The API is designed so a future build tool plugin can:
+The API is shaped so a build plugin could:
 
-1. Recognize patterns: `if (onlywhen.darwin)`, `onlywhen.darwin &&`, `@onlywhen(onlywhen.darwin)`
-2. Replace with constants: `onlywhen.darwin` → `true` or `false`
-3. Dead code elimination: Remove unreachable branches
-4. Platform-specific bundles: Build separate bundles per platform
+1. Find patterns like `if (onlywhen.darwin)` or `@onlywhen(onlywhen.darwin)`
+2. Replace `onlywhen.darwin` with `true` or `false` for a target platform
+3. Let bundlers eliminate dead code
+4. Produce platform-specific builds
 
-This is exactly how `process.env.NODE_ENV` works in production bundlers.
+Same idea as `process.env.NODE_ENV` in production bundlers.
+
+## Support
+
+Whether you use this project, have learned something from it, or just like it,
+please consider supporting it by buying me a coffee, so I can dedicate more time
+on open-source projects like this :)
+
+<a href="https://buymeacoffee.com/orgrinrt" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
 
 ## License
 
-[MPL-2.0](LICENSE) © [Hiisi Digital](https://hiisi.digital)
+> You can check out the full license [here](https://github.com/hiisi-digital/onlywhen/blob/main/LICENSE)
+
+This project is licensed under the terms of the **Mozilla Public License 2.0**.
+
+`SPDX-License-Identifier: MPL-2.0`
