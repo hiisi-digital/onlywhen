@@ -92,14 +92,14 @@ Or add to your project:
 // deno.json
 {
   "imports": {
-    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.4"
+    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.5"
   }
 }
 
 // package.json
 {
   "dependencies": {
-    "onlywhen": "^0.4"
+    "onlywhen": "^0.5"
   }
 }
 ```
@@ -180,7 +180,7 @@ onlywhen.features; // Set<string> of all features
 ### Decorators
 
 ```typescript
-import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
+import { all, arch, feature, onlywhen, platform, runtime } from "@hiisi/onlywhen";
 
 // Class becomes empty if condition is false
 @onlywhen(platform.darwin)
@@ -233,7 +233,7 @@ console.log(getRuntimeName()); // "deno" | "node" | "bun" | "browser" | "unknown
 | Rust                                        | onlywhen                                      |
 | :------------------------------------------ | :-------------------------------------------- |
 | `#[cfg(target_os = "macos")]`               | `@onlywhen(platform.darwin)`                  |
-| `#[cfg(all(unix, target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))`    |
+| `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))` |
 | `cfg!(target_os = "windows")`               | `platform.windows`                            |
 | `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))` |
 | `#[cfg(not(windows))]`                      | `@onlywhen(not(platform.windows))`            |
