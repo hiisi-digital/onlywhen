@@ -10,7 +10,7 @@
  *
  * `onlywhen` picks up on platform, runtime, and architecture. You can combine them,
  * branch on them, or use them as decorators. Simple enough that tooling can inline
- * them (static analysis pass in the works).
+ * them (static analysis pass included).
  *
  * @example Boolean checks
  * ```ts
