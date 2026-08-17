@@ -33,10 +33,11 @@ import type { TargetConfig, TransformInfo, TransformOptions, TransformResult } f
 // TypeScript is a BUILD-TIME / DEV dependency only.
 // It is NOT bundled with the runtime library - it's dynamically imported
 // on first call to transform() or ensureTypeScript().
-// Users who only import from the main module (platform, runtime, etc.)
-// never load TypeScript at all.
+// Importing only from the main module (platform, runtime, etc.) never loads
+// TypeScript at all.
 //
-// The "typescript" import is mapped in deno.json to npm:typescript@^5.0
+// The npm: specifier below resolves directly; scripts/build-npm.ts maps it to
+// the "typescript" optional peer dependency for the npm build.
 let ts: typeof import("npm:typescript@^5.0");
 
 /** Type alias for TypeScript AST node types to reduce verbosity */
