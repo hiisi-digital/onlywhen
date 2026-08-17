@@ -201,6 +201,26 @@ class App {
 }
 ```
 
+The decorator implements the legacy TypeScript decorator protocol (`target`,
+`propertyKey`, `descriptor`), so `experimentalDecorators` has to be on. Under the
+TC39 standard decorators that Deno 2 and TypeScript 5 use by default, the
+decorator receives arguments it does not recognise, returns the target unchanged,
+and the condition has no runtime effect at all. Nothing is logged when this
+happens.
+
+```jsonc
+// deno.json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true
+  }
+}
+```
+
+Builds that run the static analysis transform below do not need the flag for
+decorators the transform can evaluate: those are stripped and stubbed before any
+decorator protocol runs.
+
 ### Runtime Matching
 
 ```typescript
@@ -264,6 +284,11 @@ size and removing code that would never run.
 
 - **Cross-platform packages** - If the same bundle runs everywhere, keep runtime
   detection.
+
+The transform loads the TypeScript compiler on first call. Under Deno that
+resolves to `npm:typescript@^5.0` on its own. On npm, `typescript` is an optional
+peer dependency of `onlywhen`, so install it alongside the package before
+importing `onlywhen/transform` or running the CLI. The main module never loads it.
 
 ### API usage
 
