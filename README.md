@@ -230,13 +230,13 @@ console.log(getRuntimeName()); // "deno" | "node" | "bun" | "browser" | "unknown
 
 ## Comparison to Rust
 
-| Rust                                        | onlywhen                                      |
-| :------------------------------------------ | :-------------------------------------------- |
-| `#[cfg(target_os = "macos")]`               | `@onlywhen(platform.darwin)`                  |
-| `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))` |
-| `cfg!(target_os = "windows")`               | `platform.windows`                            |
-| `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))` |
-| `#[cfg(not(windows))]`                      | `@onlywhen(not(platform.windows))`            |
+| Rust                                                       | onlywhen                                      |
+| :--------------------------------------------------------- | :-------------------------------------------- |
+| `#[cfg(target_os = "macos")]`                              | `@onlywhen(platform.darwin)`                  |
+| `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))`    |
+| `cfg!(target_os = "windows")`                              | `platform.windows`                            |
+| `#[cfg(feature = "experimental")]`                         | `@onlywhen(onlywhen.feature("experimental"))` |
+| `#[cfg(not(windows))]`                                     | `@onlywhen(not(platform.windows))`            |
 
 ## Static Analysis Transform
 
