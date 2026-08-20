@@ -13,7 +13,12 @@
  */
 
 import { isBrowser, isBun, isDeno, isNode } from "./detection.ts";
-import type { AsyncMatchHandlers, MatchHandlers } from "./types.ts";
+import type {
+  AsyncMatchHandlers,
+  ExhaustiveAsyncMatchHandlers,
+  ExhaustiveMatchHandlers,
+  MatchHandlers,
+} from "./types.ts";
 
 // =============================================================================
 // Synchronous Match
@@ -25,20 +30,27 @@ import type { AsyncMatchHandlers, MatchHandlers } from "./types.ts";
  * Checks runtimes in order: Deno, Bun, Node, Browser, then default.
  * Returns `undefined` if no handler matches and no default is provided.
  *
+ * With a `default` branch the result is `T`, because one of the branches always runs.
+ * Without one it is `T | undefined`, because none may. That distinction is the two
+ * overloads below: a single signature returning `T | undefined` made every caller who had
+ * already written a default assert their way out of a case they had handled.
+ *
  * @typeParam T - The return type of the handlers
  * @param handlers - Object containing runtime-specific handler functions
- * @returns The result of the matched handler, or undefined if no match
+ * @returns The result of the matched handler
  *
  * @example
  * ```ts
- * const content = match({
- *   deno: () => Deno.readTextFileSync("file.txt"),
- *   node: () => require("fs").readFileSync("file.txt", "utf-8"),
+ * declare const Bun: { file(p: string): { text(): Promise<string> } };
+ * const content: Promise<string> = match({
+ *   deno: () => Deno.readTextFile("file.txt"),
  *   bun: () => Bun.file("file.txt").text(),
  *   default: () => { throw new Error("Unsupported runtime"); },
  * });
  * ```
  */
+export function match<T>(handlers: ExhaustiveMatchHandlers<T>): T;
+export function match<T>(handlers: MatchHandlers<T>): T | undefined;
 export function match<T>(handlers: MatchHandlers<T>): T | undefined {
   // Check each runtime in order of specificity
   if (isDeno && handlers.deno !== undefined) {
@@ -92,6 +104,12 @@ export function match<T>(handlers: MatchHandlers<T>): T | undefined {
  * });
  * ```
  */
+export function matchAsync<T>(
+  handlers: ExhaustiveAsyncMatchHandlers<T>,
+): Promise<T>;
+export function matchAsync<T>(
+  handlers: AsyncMatchHandlers<T>,
+): Promise<T | undefined>;
 export async function matchAsync<T>(
   handlers: AsyncMatchHandlers<T>,
 ): Promise<T | undefined> {

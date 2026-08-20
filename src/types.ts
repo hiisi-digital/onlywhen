@@ -186,6 +186,19 @@ export interface MatchHandlers<T> {
 }
 
 /**
+ * The same, with the default branch required.
+ *
+ * A `match` given one of these always produces a value, and its overload says so. The
+ * distinction exists because the alternative is that every caller who wrote a default
+ * still gets `T | undefined` back and has to assert their way out of a case they already
+ * handled.
+ */
+export interface ExhaustiveMatchHandlers<T> extends MatchHandlers<T> {
+  /** Runs when no runtime-specific handler matched. */
+  default: () => T;
+}
+
+/**
  * Handlers for runtime-specific asynchronous code execution.
  *
  * Provide async handler functions for each runtime you want to support.
@@ -213,6 +226,16 @@ export interface AsyncMatchHandlers<T> {
   browser?: () => Promise<T>;
   /** Default handler if no runtime matches */
   default?: () => Promise<T>;
+}
+
+/**
+ * The same, with the default branch required.
+ *
+ * See {@link ExhaustiveMatchHandlers}; this is that, awaited.
+ */
+export interface ExhaustiveAsyncMatchHandlers<T> extends AsyncMatchHandlers<T> {
+  /** Runs when no runtime-specific handler matched. */
+  default: () => Promise<T>;
 }
 
 // =============================================================================
