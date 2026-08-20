@@ -65,7 +65,7 @@
     "lint:fix": "deno lint --fix",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
-    "check": "deno check mod.ts",
+    "check": "deno check cli.ts mod.ts src/transform/mod.ts",
     "all": "deno task fmt && deno task lint && deno task check && deno task test",
     "prepublish": "deno task all"
   },
