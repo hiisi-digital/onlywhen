@@ -92,14 +92,14 @@ Or add to your project:
 // deno.json
 {
   "imports": {
-    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.4"
+    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.5"
   }
 }
 
 // package.json
 {
   "dependencies": {
-    "onlywhen": "^0.4"
+    "onlywhen": "^0.5"
   }
 }
 ```
@@ -180,7 +180,7 @@ onlywhen.features; // Set<string> of all features
 ### Decorators
 
 ```typescript
-import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
+import { all, arch, feature, onlywhen, platform, runtime } from "@hiisi/onlywhen";
 
 // Class becomes empty if condition is false
 @onlywhen(platform.darwin)
@@ -200,6 +200,26 @@ class App {
   experimentalMethod() {/* ... */}
 }
 ```
+
+The decorator implements the legacy TypeScript decorator protocol (`target`,
+`propertyKey`, `descriptor`), so `experimentalDecorators` has to be on. Under the
+TC39 standard decorators that Deno 2 and TypeScript 5 use by default, the
+decorator receives arguments it does not recognise, returns the target unchanged,
+and the condition has no runtime effect at all. Nothing is logged when this
+happens.
+
+```jsonc
+// deno.json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true
+  }
+}
+```
+
+Builds that run the static analysis transform below do not need the flag for
+decorators the transform can evaluate: those are stripped and stubbed before any
+decorator protocol runs.
 
 ### Runtime Matching
 
@@ -230,13 +250,13 @@ console.log(getRuntimeName()); // "deno" | "node" | "bun" | "browser" | "unknown
 
 ## Comparison to Rust
 
-| Rust                                        | onlywhen                                      |
-| :------------------------------------------ | :-------------------------------------------- |
-| `#[cfg(target_os = "macos")]`               | `@onlywhen(platform.darwin)`                  |
-| `#[cfg(all(unix, target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))`    |
-| `cfg!(target_os = "windows")`               | `platform.windows`                            |
-| `#[cfg(feature = "experimental")]`          | `@onlywhen(onlywhen.feature("experimental"))` |
-| `#[cfg(not(windows))]`                      | `@onlywhen(not(platform.windows))`            |
+| Rust                                                       | onlywhen                                      |
+| :--------------------------------------------------------- | :-------------------------------------------- |
+| `#[cfg(target_os = "macos")]`                              | `@onlywhen(platform.darwin)`                  |
+| `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))`    |
+| `cfg!(target_os = "windows")`                              | `platform.windows`                            |
+| `#[cfg(feature = "experimental")]`                         | `@onlywhen(onlywhen.feature("experimental"))` |
+| `#[cfg(not(windows))]`                                     | `@onlywhen(not(platform.windows))`            |
 
 ## Static Analysis Transform
 
@@ -264,6 +284,11 @@ size and removing code that would never run.
 
 - **Cross-platform packages** - If the same bundle runs everywhere, keep runtime
   detection.
+
+The transform loads the TypeScript compiler on first call. Under Deno that
+resolves to `npm:typescript@^5.0` on its own. On npm, `typescript` is an optional
+peer dependency of `onlywhen`, so install it alongside the package before
+importing `onlywhen/transform` or running the CLI. The main module never loads it.
 
 ### API usage
 
