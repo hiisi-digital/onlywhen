@@ -81,9 +81,11 @@ As a library:
 ```typescript
 // Deno / JSR
 import { all, arch, onlywhen, platform, runtime } from "jsr:@hiisi/onlywhen";
+```
 
+```typescript
 // Node.js
-import { all, arch, onlywhen, platform, runtime } from "onlywhen";
+import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
 ```
 
 Or add to your project:
@@ -179,6 +181,22 @@ onlywhen.features; // Set<string> of all features
 
 ### Decorators
 
+The decorator implements the legacy TypeScript decorator protocol (`target`,
+`propertyKey`, `descriptor`), so `experimentalDecorators` has to be on. Under the
+TC39 standard decorators that Deno 2 and TypeScript 5 use by default, the
+decorator receives arguments it does not recognise, returns the target unchanged,
+and the condition has no runtime effect at all. Nothing is logged when this
+happens.
+
+```jsonc
+// deno.json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true
+  }
+}
+```
+
 ```typescript
 import { all, arch, feature, onlywhen, platform, runtime } from "@hiisi/onlywhen";
 
@@ -201,22 +219,6 @@ class App {
 }
 ```
 
-The decorator implements the legacy TypeScript decorator protocol (`target`,
-`propertyKey`, `descriptor`), so `experimentalDecorators` has to be on. Under the
-TC39 standard decorators that Deno 2 and TypeScript 5 use by default, the
-decorator receives arguments it does not recognise, returns the target unchanged,
-and the condition has no runtime effect at all. Nothing is logged when this
-happens.
-
-```jsonc
-// deno.json
-{
-  "compilerOptions": {
-    "experimentalDecorators": true
-  }
-}
-```
-
 Builds that run the static analysis transform below do not need the flag for
 decorators the transform can evaluate: those are stripped and stubbed before any
 decorator protocol runs.
@@ -226,9 +228,19 @@ decorator protocol runs.
 ```typescript
 import { match } from "@hiisi/onlywhen";
 
-const result = match({
-  deno: () => Deno.readTextFileSync("file.txt"),
-  node: () => require("fs").readFileSync("file.txt", "utf-8"),
+// Each branch names globals that exist only in its own runtime, so the others need them
+// declared to type-check here. `@types/bun` and `@types/node` do this properly.
+declare const Bun: { file(path: string): { text(): Promise<string> } };
+declare function require(
+  name: "fs/promises",
+): { readFile(path: string, encoding: string): Promise<string> };
+
+// Every branch returns the same type, because `match` returns one value and not three.
+// Bun's `file().text()` is asynchronous, so the other two are read asynchronously too
+// rather than one branch quietly returning a promise and the others a string.
+const contents: Promise<string> = match({
+  deno: () => Deno.readTextFile("file.txt"),
+  node: () => require("fs/promises").readFile("file.txt", "utf-8"),
   bun: () => Bun.file("file.txt").text(),
   default: () => {
     throw new Error("Unsupported runtime");
@@ -370,7 +382,10 @@ for await (const entry of Deno.readDir("src")) {
 await build({
   entryPoints: [".build/mod.ts"],
   outDir: "./npm",
-  // ...
+  // `shims` is required rather than optional, so the example did not compile without it.
+  // What belongs in it depends on which web globals the package uses.
+  shims: { deno: true },
+  package: { name: "my-package", version: "1.0.0" },
 });
 ```
 
@@ -449,16 +464,20 @@ further than just replacing the condition:
   - Prototype iteration at runtime
   - Bundle size (the original method bodies are removed)
 
+Before the transform, targeting linux:
+
 ```typescript
-// Before transform (targeting linux)
 @onlywhen(platform.darwin)
 class MacFeature {
   expensiveMethod() {/* lots of code */}
 }
+```
 
-// After transform
+After it:
+
+```typescript
 class MacFeature {
-  expensiveMethod() {} // Empty stub, no decorator overhead
+  expensiveMethod() {} // empty stub, no decorator overhead
 }
 ```
 
@@ -467,6 +486,7 @@ indirection points, potentially improving runtime performance beyond just
 the decorator overhead savings.
 
 <!-- COMPATIBILITY_START -->
+
 ## Runtime Compatibility
 
 > Last tested: 2025-12-12
@@ -476,20 +496,21 @@ Runtime detection (`runtime.node`, `runtime.deno`, etc.) is tested, along with
 API functionality. Platform detection is cross-platform by design.
 
 | Runtime | Version | Status |
-|---------|---------|--------|
-| Deno | v1.x | ✅ |
-| Deno | v2.x | ✅ |
-| Node.js | 18 | ✅ |
-| Node.js | 20 | ✅ |
-| Node.js | 22 | ✅ |
-| Bun | canary | ✅ |
-| Bun | latest | ✅ |
+| ------- | ------- | ------ |
+| Deno    | v1.x    | ✅     |
+| Deno    | v2.x    | ✅     |
+| Node.js | 18      | ✅     |
+| Node.js | 20      | ✅     |
+| Node.js | 22      | ✅     |
+| Bun     | canary  | ✅     |
+| Bun     | latest  | ✅     |
 
 ### Summary
 
 - **Deno**: ✅ All versions passing
 - **Node.js**: ✅ All versions passing
 - **Bun**: ✅ All versions passing
+
 <!-- COMPATIBILITY_END -->
 
 ## Support

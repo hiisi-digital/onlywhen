@@ -45,11 +45,20 @@ function loadFeaturesFromConfig(path: string): string[] {
     if (isNode || isBun) {
       // deno-lint-ignore no-explicit-any
       const g = globalThis as any;
-      const require = g.require;
 
-      if (typeof require === "function") {
-        const fs = require("fs");
-        const pathModule = require("path");
+      // `process.getBuiltinModule` rather than `require`. This branch used to test
+      // `typeof require === "function"`, and under ESM, which is the default on both
+      // runtimes, `globalThis.require` is undefined. So the branch never ran, the catch
+      // below swallowed nothing because nothing threw, and a node or bun consumer with
+      // `features` in package.json silently got none of them.
+      //
+      // `getBuiltinModule` is synchronous, needs no import, and is present on node, bun and
+      // deno alike, which is what this has to be: the features are read while the module is
+      // initialising and there is nowhere to await.
+      const getBuiltinModule = g.process?.getBuiltinModule;
+      if (typeof getBuiltinModule === "function") {
+        const fs = getBuiltinModule.call(g.process, "node:fs");
+        const pathModule = getBuiltinModule.call(g.process, "node:path");
         const fullPath = pathModule.resolve(g.process.cwd(), path);
 
         if (fs.existsSync(fullPath)) {
