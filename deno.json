@@ -1,11 +1,9 @@
 {
   "name": "@hiisi/onlywhen",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "license": "MPL-2.0",
   "exports": {
-    ".": "./mod.ts",
-    "./transform": "./src/transform/mod.ts",
-    "./cli": "./cli.ts"
+    ".": "./mod.ts"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.0",
@@ -59,7 +57,6 @@
     ]
   },
   "tasks": {
-    "cli": "deno run -A cli.ts",
     "test": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net",
     "test:watch": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net --watch",
     "test:coverage": "deno test --allow-read --allow-write --allow-env --allow-run --allow-net --coverage=coverage/",
@@ -67,7 +64,7 @@
     "lint:fix": "deno lint --fix",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
-    "check": "deno check cli.ts mod.ts src/transform/mod.ts",
+    "check": "deno check mod.ts",
     "all": "deno task fmt && deno task lint && deno task check && deno task test",
     "prepublish": "deno task all"
   },
@@ -95,9 +92,6 @@
       "scripts/",
       ".githooks/"
     ]
-  },
-  "compilerOptions": {
-    "experimentalDecorators": true
   },
   "repository": "https://github.com/hiisi-digital/onlywhen",
   "distDir": "target",

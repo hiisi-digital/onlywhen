@@ -14,57 +14,56 @@
 
 ## What it does
 
-`onlywhen` picks up on platform, runtime, and architecture. You can combine them,
-branch on them, or use them as decorators. Simple enough that tooling can inline
-them (static analysis pass included).
+Tells you what you're running on, right now, at runtime. Which runtime, which
+platform, which architecture. That's the whole job.
 
 ```typescript
-import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
+import { arch, match, platform, runtime } from "@hiisi/onlywhen";
 
-// Boolean checks
 if (platform.darwin) {
-  macSpecificCode();
+  macSpecificThing();
 }
 
-// Short-circuit
-runtime.deno && denoSpecificCode();
+runtime.deno && denoSpecificThing();
 
-// Combinators (Rust-like syntax)
-if (all(platform.linux, arch.x64)) {
-  linuxX64Code();
+if (platform.linux && arch.x64) {
+  linuxX64Thing();
 }
 
-// Decorators
-@onlywhen(platform.darwin)
-class MacOnlyFeature {
-  // Becomes an inert class on other platforms
-}
-
-// Combined with decorators
-@onlywhen(all(platform.linux, arch.arm64))
-class LinuxArm64Only {}
+// or dispatch on it, which is usually nicer than a chain of ifs
+const cachePath = match(runtime, {
+  deno: () => "~/.cache/deno",
+  node: () => "~/.npm/_cacache",
+  bun: () => "~/.bun/install/cache",
+  _: () => "./.cache",
+});
 ```
 
-### Classic API
+The vocabulary (`"deno"`, `"darwin"`, `"arm64"`) comes from
+[`@hiisi/tgts`](https://jsr.io/@hiisi/tgts), which owns it. This package doesn't
+declare its own names for the same things, because it did once and the two
+spellings disagreed: `x86_64` here against `x64` there, for the same
+architecture, with no conversion between them anybody outside could reach.
 
-You can also use the `onlywhen` object directly:
+## What it does not do, and where that lives instead
 
-```typescript
-import { onlywhen } from "@hiisi/onlywhen";
+This used to carry a `@onlywhen()` decorator, a feature flag api and a compiler
+transform. All three were second implementations of things other packages in the
+set already own, and they didn't agree with the originals. They're gone as of
+0.7.0:
 
-if (onlywhen.darwin) {
-  macSpecificCode();
-}
+| what you wanted                              | where it is now                                                         |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `@onlywhen(...)` for conditional compilation | `@cfg(...)` from [`@hiisi/cfg-ts`](https://jsr.io/@hiisi/cfg-ts)        |
+| `all()`, `any()`, `not()` predicates         | `@hiisi/cfg-ts`                                                         |
+| `feature()`, `enableFeature()` and friends   | [`@hiisi/ft-flags`](https://jsr.io/@hiisi/ft-flags)                     |
+| stripping code at build time                 | `@hiisi/cfg-ts`, applied by [`@hiisi/otso`](https://jsr.io/@hiisi/otso) |
 
-if (onlywhen.all(onlywhen.node, onlywhen.linux)) {
-  nodeOnLinuxCode();
-}
-
-@onlywhen(onlywhen.darwin)
-class MacOnlyFeature {}
-```
-
-Both styles work and can be mixed. Use whichever you prefer.
+If you were using any of those, that's a real migration and I'm sorry about it.
+The reason it's worth doing: you were getting two answers to one question
+depending on which import you reached for, and neither package knew the other
+existed. One `@cfg` for everything that decides at build time, and this for the
+one question that genuinely can't be answered until you're running.
 
 ## Installation
 
@@ -270,248 +269,20 @@ console.log(getRuntimeName()); // "deno" | "node" | "bun" | "browser" | "unknown
 | `#[cfg(feature = "experimental")]`                         | `@onlywhen(onlywhen.feature("experimental"))` |
 | `#[cfg(not(windows))]`                                     | `@onlywhen(not(platform.windows))`            |
 
-## Static Analysis Transform
-
-The `@hiisi/onlywhen/transform` module replaces onlywhen expressions with boolean
-literals at build time. Bundlers can then eliminate dead branches, reducing bundle
-size and removing code that would never run.
-
-### When to use it
-
-- **Deploying to a known environment** - If you're deploying to Linux servers,
-  bake in `platform: "linux"` and let the bundler remove Windows/macOS code paths.
-
-- **Building platform-specific binaries** - When using `deno compile` or building
-  separate npm packages per platform.
-
-- **Reducing bundle size** - Code behind `if (platform.darwin)` on a Linux deploy
-  is dead weight. The transform removes it.
-
-- **Feature flag cleanup** - Ship builds with specific features baked in or out.
-
-### When NOT to use it
-
-- **Building libraries for others** - Don't bake in platform assumptions. Let
-  consumers do their own transforms or use runtime detection.
-
-- **Cross-platform packages** - If the same bundle runs everywhere, keep runtime
-  detection.
-
-The transform loads the TypeScript compiler on first call. Under Deno that
-resolves to `npm:typescript@^5.0` on its own. On npm, `typescript` is an optional
-peer dependency of `onlywhen`, so install it alongside the package before
-importing `onlywhen/transform` or running the CLI. The main module never loads it.
-
-### API usage
-
-```typescript
-import { transform } from "@hiisi/onlywhen/transform";
-
-const source = `
-import { platform, runtime, all } from "@hiisi/onlywhen";
-
-if (platform.darwin) { macCode(); }
-if (platform.linux) { linuxCode(); }
-const check = all(platform.linux, runtime.node);
-`;
-
-const result = await transform(source, {
-  platform: "linux",
-  runtime: "node",
-  arch: "x64",
-  features: ["production"],
-});
-
-// result.code:
-// if (false) { macCode(); }
-// if (true) { linuxCode(); }
-// const check = true;
-//
-// A minifier will then remove the dead `if (false)` branch entirely.
-```
-
-### CLI usage
-
-```bash
-# Transform a file
-deno run -A jsr:@hiisi/onlywhen/cli transform \
-  --platform=linux --runtime=node \
-  src/app.ts -o dist/app.ts
-
-# Transform a directory
-deno run -A jsr:@hiisi/onlywhen/cli transform \
-  --platform=darwin --arch=arm64 \
-  src/ -o dist/
-```
-
-### Integration examples
-
-#### Deno compile
-
-Transform before compiling to a standalone binary:
-
-```jsonc
-// deno.json
-{
-  "tasks": {
-    "build:linux": "deno run -A jsr:@hiisi/onlywhen/cli transform --platform=linux --runtime=deno src/ -o .build/ && deno compile --target=x86_64-unknown-linux-gnu --output=myapp-linux .build/main.ts",
-    "build:macos": "deno run -A jsr:@hiisi/onlywhen/cli transform --platform=darwin --runtime=deno src/ -o .build/ && deno compile --target=aarch64-apple-darwin --output=myapp-macos .build/main.ts"
-  }
-}
-```
-
-#### npm package builds (dnt)
-
-Transform before running dnt to create Node-specific packages:
-
-```typescript
-// scripts/build-npm.ts
-import { transform } from "jsr:@hiisi/onlywhen/transform";
-import { build } from "jsr:@deno/dnt";
-
-// Transform source for Node.js target
-for await (const entry of Deno.readDir("src")) {
-  if (entry.name.endsWith(".ts")) {
-    const source = await Deno.readTextFile(`src/${entry.name}`);
-    const result = await transform(source, { runtime: "node" });
-    await Deno.writeTextFile(`.build/${entry.name}`, result.code);
-  }
-}
-
-// Build from transformed source
-await build({
-  entryPoints: [".build/mod.ts"],
-  outDir: "./npm",
-  // `shims` is required rather than optional, so the example did not compile without it.
-  // What belongs in it depends on which web globals the package uses.
-  shims: { deno: true },
-  package: { name: "my-package", version: "1.0.0" },
-});
-```
-
-#### Deploy scripts
-
-Transform before deploying to a known environment:
-
-```bash
-#!/bin/bash
-# deploy.sh - Deploy to Linux servers
-
-# Transform for production Linux environment
-deno run -A jsr:@hiisi/onlywhen/cli transform \
-  --platform=linux \
-  --runtime=node \
-  --features=production \
-  src/ -o dist/
-
-# Bundle with your preferred bundler (dead code gets eliminated)
-npx esbuild dist/main.ts --bundle --minify --outfile=bundle.js
-
-# Deploy
-rsync -av bundle.js server:/app/
-```
-
-#### Custom build script
-
-```typescript
-// build.ts
-import { transform } from "@hiisi/onlywhen/transform";
-
-const files = ["src/main.ts", "src/utils.ts", "src/platform.ts"];
-
-for (const file of files) {
-  const source = await Deno.readTextFile(file);
-
-  const result = await transform(source, {
-    platform: Deno.build.os === "darwin" ? "darwin" : "linux",
-    runtime: "deno",
-    arch: Deno.build.arch === "aarch64" ? "arm64" : "x64",
-    features: Deno.env.get("FEATURES")?.split(",") ?? [],
-  });
-
-  console.log(`${file}: ${result.transformCount} replacements`);
-  await Deno.writeTextFile(file.replace("src/", "dist/"), result.code);
-}
-```
-
-### What gets transformed
-
-| Expression                             | With `{ platform: "darwin" }` |
-| :------------------------------------- | :---------------------------- |
-| `platform.darwin`                      | `true`                        |
-| `platform.linux`                       | `false`                       |
-| `onlywhen.darwin`                      | `true`                        |
-| `all(platform.darwin, arch.arm64)`     | `true` (if arch is arm64)     |
-| `any(platform.darwin, platform.linux)` | `true`                        |
-| `not(platform.darwin)`                 | `false`                       |
-| `onlywhen.feature("production")`       | `true` (if in features list)  |
-
-Properties not in your config stay as runtime checks. This lets you partially
-bake values while keeping others dynamic.
-
-### Decorator Optimization
-
-When decorators can be fully evaluated at build time, the transformer goes
-further than just replacing the condition:
-
-- **Condition is `true`**: The decorator is stripped entirely, keeping the
-  class/method unchanged. No runtime overhead.
-
-- **Condition is `false`**: The decorator is stripped and the class/method body
-  is replaced with empty stubs. This eliminates:
-  - Decorator function call overhead
-  - Inert class creation logic
-  - Prototype iteration at runtime
-  - Bundle size (the original method bodies are removed)
-
-Before the transform, targeting linux:
-
-```typescript
-@onlywhen(platform.darwin)
-class MacFeature {
-  expensiveMethod() {/* lots of code */}
-}
-```
-
-After it:
-
-```typescript
-class MacFeature {
-  expensiveMethod() {} // empty stub, no decorator overhead
-}
-```
-
-This optimization means the JIT compiler sees cleaner code with fewer
-indirection points, potentially improving runtime performance beyond just
-the decorator overhead savings.
-
-<!-- COMPATIBILITY_START -->
-
 ## Runtime Compatibility
 
-> Last tested: 2025-12-12
+Deno, Node and Bun, and a browser for the detection half.
 
-These tests verify that the package works correctly in each runtime environment.
-Runtime detection (`runtime.node`, `runtime.deno`, etc.) is tested, along with
-API functionality. Platform detection is cross-platform by design.
+I have to be straight about what that claim rests on, because until now it
+rested on nothing. This section used to carry a table saying Deno 1.x and 2.x,
+Node 18, 20 and 22, and Bun canary and latest all passed, dated to a day in
+December. Every test in this package is a `Deno.test`, so not one of those seven
+had ever been run. The table was not out of date, it was never true.
 
-| Runtime | Version | Status |
-| ------- | ------- | ------ |
-| Deno    | v1.x    | yes    |
-| Deno    | v2.x    | yes    |
-| Node.js | 18      | yes    |
-| Node.js | 20      | yes    |
-| Node.js | 22      | yes    |
-| Bun     | canary  | yes    |
-| Bun     | latest  | yes    |
-
-### Summary
-
-- **Deno**: yes All versions passing
-- **Node.js**: yes All versions passing
-- **Bun**: yes All versions passing
-
-<!-- COMPATIBILITY_END -->
+So: the suite runs under Deno today and the cross-runtime matrix is being built.
+When it lands this section says which runtimes actually ran and on what date,
+generated from the run rather than typed in. Until then, take Node and Bun as
+intended-and-unverified, which is what they have been all along.
 
 ## Support
 

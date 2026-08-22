@@ -57,8 +57,6 @@
 // Main Export
 // =============================================================================
 
-export { onlywhen } from "./src/cfg.ts";
-
 // =============================================================================
 // Detection - Namespace Objects (primary API)
 // =============================================================================
@@ -94,31 +92,6 @@ export {
 } from "./src/detection.ts";
 
 // =============================================================================
-// Combinators
-// =============================================================================
-
-export { all, any, not } from "./src/combinators.ts";
-
-// =============================================================================
-// Features
-// =============================================================================
-
-export {
-  disableFeature,
-  enabledFeatures,
-  enableFeature,
-  feature,
-  getAllFeatures,
-  hasFeature,
-} from "./src/features.ts";
-
-// =============================================================================
-// Decorators
-// =============================================================================
-
-export { createCfgDecorator } from "./src/decorators.ts";
-
-// =============================================================================
 // Match
 // =============================================================================
 
@@ -132,12 +105,7 @@ export type {
   Architecture,
   ArchNamespace,
   AsyncMatchHandlers,
-  Cfg,
-  CfgDecorator,
-  ClassDecorator,
-  FeatureConfig,
   MatchHandlers,
-  MethodDecorator,
   Platform,
   PlatformNamespace,
   RuntimeName,
