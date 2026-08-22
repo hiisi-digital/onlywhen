@@ -146,11 +146,7 @@ export const isWindows: boolean = platformName === "windows";
  * the two packages ended up with two spellings and no conversion between them.
  */
 function detectArch(): Architecture {
-  const raw = isDeno
-    ? globalDeno.build?.arch
-    : (isNode || isBun)
-    ? globalProcess.arch
-    : undefined;
+  const raw = isDeno ? globalDeno.build?.arch : (isNode || isBun) ? globalProcess.arch : undefined;
   if (raw === undefined) return "unknown";
   return normaliseArchitecture(raw) ?? "unknown";
 }

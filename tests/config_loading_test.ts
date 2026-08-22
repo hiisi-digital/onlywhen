@@ -53,14 +53,14 @@ async function featuresUnder(
 /**
  * The probe imports this module by absolute path, so the subprocess has to
  * resolve this module's own imports, one of which is `@hiisi/tgts`. Deno is
- * handed the config that maps it to the sibling on disk. Node and bun have no
+ * handed the config, whose links entry maps it to the sibling on disk. Node and bun have no
  * equivalent and would ask a registry for a package that is not on one, so they
  * are named here and skipped with the reason rather than silently dropped.
  */
-const LOCAL_CONFIG = join(ROOT, "deno.local.json");
+const CONFIG = join(ROOT, "deno.json");
 
 const RUNTIMES: readonly [string, string, readonly string[]][] = [
-  ["deno", Deno.execPath(), ["run", "--allow-read", "--allow-env", "-c", LOCAL_CONFIG]],
+  ["deno", Deno.execPath(), ["run", "--allow-read", "--allow-env", "-c", CONFIG]],
 ];
 
 /** Runtimes this cannot reach yet, and the one reason. */
