@@ -12,41 +12,38 @@
  * Types are organized into logical groups: detection, decorators, features, and match.
  */
 
+import type {
+  Architecture as TgtsArchitecture,
+  Platform as TgtsPlatform,
+  RuntimeName as TgtsRuntimeName,
+} from "@hiisi/tgts";
+
 // =============================================================================
 // Detection Types
 // =============================================================================
 
 /**
- * Supported JavaScript runtime environments.
+ * The runtime, platform and architecture vocabulary.
  *
- * - `deno` - Deno runtime
- * - `node` - Node.js runtime
- * - `bun` - Bun runtime
- * - `browser` - Browser environment
- * - `unknown` - Unrecognized environment
+ * Taken from `@hiisi/tgts`, which owns it. This module used to declare its own
+ * and the two disagreed: it said `x86_64` and `aarch64` where tgts says `x64`
+ * and `arm64`, for the same two architectures, with no conversion between them
+ * that anything outside tgts could reach.
+ *
+ * It also disagreed with itself. The property names on {@link ArchNamespace}
+ * have always been `x64` and `arm64`, matching tgts, while the type alias said
+ * otherwise. Adopting tgts fixes both at once.
+ *
+ * `unknown` is added on top because detection can fail and tgts, being a
+ * catalogue of real targets, has no name for that.
  */
-export type RuntimeName = "deno" | "node" | "bun" | "browser" | "unknown";
+export type RuntimeName = TgtsRuntimeName | "unknown";
 
-/**
- * Supported operating system identifiers.
- *
- * - `darwin` - macOS
- * - `linux` - Linux
- * - `windows` - Windows
- * - `unknown` - Unrecognized platform
- */
-export type Platform = "darwin" | "linux" | "windows" | "unknown";
+/** The operating system, from tgts, plus the case where detection failed. */
+export type Platform = TgtsPlatform | "unknown";
 
-/**
- * Supported CPU architecture identifiers.
- *
- * - `x86_64` - 64-bit x86 (AMD64)
- * - `aarch64` - 64-bit ARM (ARM64, Apple Silicon)
- * - `arm` - 32-bit ARM
- * - `x86` - 32-bit x86 (i386/i686)
- * - `unknown` - Unrecognized architecture
- */
-export type Architecture = "x86_64" | "aarch64" | "arm" | "x86" | "unknown";
+/** The cpu architecture, from tgts, plus the case where detection failed. */
+export type Architecture = TgtsArchitecture | "unknown";
 
 // =============================================================================
 // Namespace Types (for ergonomic imports)

@@ -497,13 +497,13 @@ API functionality. Platform detection is cross-platform by design.
 
 | Runtime | Version | Status |
 | ------- | ------- | ------ |
-| Deno    | v1.x    | yes     |
-| Deno    | v2.x    | yes     |
-| Node.js | 18      | yes     |
-| Node.js | 20      | yes     |
-| Node.js | 22      | yes     |
-| Bun     | canary  | yes     |
-| Bun     | latest  | yes     |
+| Deno    | v1.x    | yes    |
+| Deno    | v2.x    | yes    |
+| Node.js | 18      | yes    |
+| Node.js | 20      | yes    |
+| Node.js | 22      | yes    |
+| Bun     | canary  | yes    |
+| Bun     | latest  | yes    |
 
 ### Summary
 
