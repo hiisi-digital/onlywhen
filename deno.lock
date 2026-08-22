@@ -148,9 +148,18 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@hiisi/tgts@0.2",
       "jsr:@std/assert@1",
       "jsr:@std/path@1",
       "jsr:@std/testing@1"
-    ]
+    ],
+    "links": {
+      "jsr:@hiisi/tgts@0.2.0": {
+        "dependencies": [
+          "jsr:@std/assert@1",
+          "jsr:@std/testing@1"
+        ]
+      }
+    }
   }
 }
