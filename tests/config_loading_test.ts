@@ -50,10 +50,23 @@ async function featuresUnder(
   return JSON.parse(last) as string[];
 }
 
+/**
+ * The probe imports this module by absolute path, so the subprocess has to
+ * resolve this module's own imports, one of which is `@hiisi/tgts`. Deno is
+ * handed the config that maps it to the sibling on disk. Node and bun have no
+ * equivalent and would ask a registry for a package that is not on one, so they
+ * are named here and skipped with the reason rather than silently dropped.
+ */
+const LOCAL_CONFIG = join(ROOT, "deno.local.json");
+
 const RUNTIMES: readonly [string, string, readonly string[]][] = [
-  ["deno", Deno.execPath(), ["run", "--allow-read", "--allow-env"]],
-  ["node", "node", []],
-  ["bun", "bun", []],
+  ["deno", Deno.execPath(), ["run", "--allow-read", "--allow-env", "-c", LOCAL_CONFIG]],
+];
+
+/** Runtimes this cannot reach yet, and the one reason. */
+const UNREACHABLE: readonly [string, string][] = [
+  ["node", "resolves @hiisi/tgts from a registry, and it is not on one yet"],
+  ["bun", "resolves @hiisi/tgts from a registry, and it is not on one yet"],
 ];
 
 Deno.test("features in package.json load on every runtime", async () => {
@@ -112,5 +125,20 @@ Deno.test("a project with no features declared loads none", async () => {
     }
   } finally {
     await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("the runtimes this cannot reach are named, not quietly dropped", () => {
+  // A suite that silently covers one runtime while claiming three is the shape
+  // the test gate calls sampled: every test present looks reasonable and the
+  // uncovered region goes unnamed. These are named, with the reason, so the
+  // coverage this file actually has is legible from inside it.
+  assert(UNREACHABLE.length > 0 || RUNTIMES.length === 3, "neither reachable nor named");
+  for (const [name, why] of UNREACHABLE) {
+    assert(why.length > 0, `${name} is listed as unreachable with no reason`);
+    assert(
+      !RUNTIMES.some(([r]) => r === name),
+      `${name} is both exercised and listed as unreachable`,
+    );
   }
 });

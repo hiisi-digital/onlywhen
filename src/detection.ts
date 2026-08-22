@@ -12,6 +12,7 @@
  * The values are immutable after initialization.
  */
 
+import { normaliseArchitecture, normalisePlatform } from "@hiisi/tgts";
 import type {
   Architecture,
   ArchNamespace,
@@ -102,33 +103,13 @@ export function getRuntimeName(): RuntimeName {
  * Detects the current operating system.
  */
 function detectPlatform(): Platform {
-  // Deno
-  if (isDeno) {
-    const os = globalDeno.build?.os;
-    if (os === "darwin") return "darwin";
-    if (os === "linux") return "linux";
-    if (os === "windows") return "windows";
-    return "unknown";
-  }
-
-  // Node.js or Bun
-  if (isNode || isBun) {
-    const p = globalProcess.platform;
-    if (p === "darwin") return "darwin";
-    if (p === "linux") return "linux";
-    if (p === "win32") return "windows";
-    return "unknown";
-  }
-
-  // Browser
-  if (isBrowser && globalNavigator?.platform) {
-    const p = globalNavigator.platform.toLowerCase();
-    if (p.includes("mac")) return "darwin";
-    if (p.includes("linux")) return "linux";
-    if (p.includes("win")) return "windows";
-  }
-
-  return "unknown";
+  const raw = isDeno
+    ? globalDeno.build?.os
+    : (isNode || isBun)
+    ? globalProcess.platform
+    : undefined;
+  if (raw === undefined) return "unknown";
+  return normalisePlatform(raw) ?? "unknown";
 }
 
 /**
@@ -157,28 +138,21 @@ export const isWindows: boolean = platformName === "windows";
 // =============================================================================
 
 /**
- * Detects the current CPU architecture.
+ * Detects the current cpu architecture.
+ *
+ * The raw value goes to `@hiisi/tgts`, which owns the vocabulary and the
+ * mapping into it. Deno reports `x86_64` and node reports `x64` for the same
+ * silicon, and this module used to carry its own switch saying so, which is how
+ * the two packages ended up with two spellings and no conversion between them.
  */
 function detectArch(): Architecture {
-  // Deno
-  if (isDeno) {
-    const a = globalDeno.build?.arch;
-    if (a === "x86_64") return "x86_64";
-    if (a === "aarch64") return "aarch64";
-    return "unknown";
-  }
-
-  // Node.js or Bun
-  if (isNode || isBun) {
-    const a = globalProcess.arch;
-    if (a === "x64") return "x86_64";
-    if (a === "arm64") return "aarch64";
-    if (a === "arm") return "arm";
-    if (a === "ia32" || a === "x86") return "x86";
-    return "unknown";
-  }
-
-  return "unknown";
+  const raw = isDeno
+    ? globalDeno.build?.arch
+    : (isNode || isBun)
+    ? globalProcess.arch
+    : undefined;
+  if (raw === undefined) return "unknown";
+  return normaliseArchitecture(raw) ?? "unknown";
 }
 
 /**
@@ -190,12 +164,12 @@ export const archName: Architecture = detectArch();
 /**
  * True when running on x86_64 architecture.
  */
-export const isX64: boolean = archName === "x86_64";
+export const isX64: boolean = archName === "x64";
 
 /**
  * True when running on aarch64 / ARM64 / Apple Silicon.
  */
-export const isArm64: boolean = archName === "aarch64";
+export const isArm64: boolean = archName === "arm64";
 
 // =============================================================================
 // Namespace Objects (for ergonomic imports)

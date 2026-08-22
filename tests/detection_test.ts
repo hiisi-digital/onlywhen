@@ -10,6 +10,7 @@
  */
 
 import { assertEquals, assertExists } from "@std/assert";
+import { ARCHITECTURES } from "@hiisi/tgts";
 import { describe, it } from "@std/testing/bdd";
 import {
   arch,
@@ -104,15 +105,18 @@ describe("Architecture Detection", () => {
   });
 
   it("should have a valid archName value", () => {
-    const validArchs = ["x86_64", "aarch64", "arm", "x86", "unknown"];
+    // the vocabulary is tgts', so the list is taken from there rather than
+    // written out again. a fourth copy of these names is how the third one
+    // went unnoticed.
+    const validArchs = [...ARCHITECTURES, "unknown"];
     assertEquals(validArchs.includes(archName), true);
   });
 
   it("arch booleans should match archName string", () => {
-    if (archName === "x86_64") {
+    if (archName === "x64") {
       assertEquals(isX64, true);
       assertEquals(isArm64, false);
-    } else if (archName === "aarch64") {
+    } else if (archName === "arm64") {
       assertEquals(isX64, false);
       assertEquals(isArm64, true);
     }
