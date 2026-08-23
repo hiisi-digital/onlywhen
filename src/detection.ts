@@ -26,9 +26,33 @@ import type {
 // Global References
 // =============================================================================
 
-// Cache global references once to avoid repeated property access
-// deno-lint-ignore no-explicit-any
-const g = globalThis as any;
+/**
+ * What this package is allowed to assume about the world.
+ *
+ * Detection is the whole of this package now, so this is its only boundary,
+ * and it was the one place with no types at all: `globalThis as any`, with
+ * every exported boolean flowing out of it. Naming the shape costs nothing and
+ * means a typo in a probe below is a compile error rather than a `false` that
+ * looks like a runtime simply not being present.
+ *
+ * Everything is optional because the entire point is that none of it is there.
+ */
+interface Ambient {
+  readonly Deno?: {
+    readonly version?: unknown;
+    readonly build?: { readonly arch?: string; readonly os?: string };
+  };
+  readonly process?: {
+    readonly arch?: string;
+    readonly platform?: string;
+    readonly versions?: { readonly node?: string; readonly bun?: string };
+  };
+  readonly window?: unknown;
+  readonly navigator?: unknown;
+}
+
+// read once, because a property access on the global object is not free
+const g = globalThis as unknown as Ambient;
 const globalDeno = g.Deno;
 const globalProcess = g.process;
 const globalWindow = g.window;
@@ -104,9 +128,9 @@ export function getRuntimeName(): RuntimeName {
  */
 function detectPlatform(): Platform {
   const raw = isDeno
-    ? globalDeno.build?.os
+    ? globalDeno?.build?.os
     : (isNode || isBun)
-    ? globalProcess.platform
+    ? globalProcess?.platform
     : undefined;
   if (raw === undefined) return "unknown";
   return normalisePlatform(raw) ?? "unknown";
@@ -146,7 +170,7 @@ export const isWindows: boolean = platformName === "windows";
  * the two packages ended up with two spellings and no conversion between them.
  */
 function detectArch(): Architecture {
-  const raw = isDeno ? globalDeno.build?.arch : (isNode || isBun) ? globalProcess.arch : undefined;
+  const raw = isDeno ? globalDeno?.build?.arch : (isNode || isBun) ? globalProcess?.arch : undefined;
   if (raw === undefined) return "unknown";
   return normaliseArchitecture(raw) ?? "unknown";
 }
