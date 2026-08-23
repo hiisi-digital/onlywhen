@@ -14,8 +14,9 @@
 
 ## What it does
 
-Tells you what you're running on, right now, at runtime. Which runtime, which
-platform, which architecture. That's the whole job.
+`onlywhen` tells you what you're running on, right now, at runtime. Which
+runtime, which platform, which architecture. That's the whole job, and since
+0.7.0 it really is the whole job.
 
 ```typescript
 import { arch, match, platform, runtime } from "@hiisi/onlywhen";
@@ -30,29 +31,29 @@ if (platform.linux && arch.x64) {
   linuxX64Thing();
 }
 
-// or dispatch on it, which is usually nicer than a chain of ifs
-const cachePath = match(runtime, {
+// or dispatch on it, which usually reads better than a chain of ifs
+const cachePath = match({
   deno: () => "~/.cache/deno",
   node: () => "~/.npm/_cacache",
   bun: () => "~/.bun/install/cache",
-  _: () => "./.cache",
+  default: () => "./.cache",
 });
 ```
 
-The vocabulary (`"deno"`, `"darwin"`, `"arm64"`) comes from
-[`@hiisi/tgts`](https://jsr.io/@hiisi/tgts), which owns it. This package doesn't
-declare its own names for the same things, because it did once and the two
-spellings disagreed: `x86_64` here against `x64` there, for the same
-architecture, with no conversion between them anybody outside could reach.
+The names it uses (`"deno"`, `"darwin"`, `"arm64"`) come from
+[`@hiisi/tgts`](https://jsr.io/@hiisi/tgts), which owns that vocabulary. This
+package doesn't declare its own words for the same things, because it did once
+and the two spellings drifted apart: `x86_64` here against `x64` there, for the
+same architecture, and nothing outside could convert between them.
 
-## What it does not do, and where that lives instead
+## What it doesn't do, and where that went instead
 
 This used to carry a `@onlywhen()` decorator, a feature flag api and a compiler
-transform. All three were second implementations of things other packages in the
-set already own, and they didn't agree with the originals. They're gone as of
-0.7.0:
+transform. All three were second implementations of things other packages in
+the set already owned, and they didn't agree with the originals. They're gone
+as of 0.7.0:
 
-| what you wanted                              | where it is now                                                         |
+| what you wanted                              | where it lives now                                                      |
 | -------------------------------------------- | ----------------------------------------------------------------------- |
 | `@onlywhen(...)` for conditional compilation | `@cfg(...)` from [`@hiisi/cfg-ts`](https://jsr.io/@hiisi/cfg-ts)        |
 | `all()`, `any()`, `not()` predicates         | `@hiisi/cfg-ts`                                                         |
@@ -61,228 +62,131 @@ set already own, and they didn't agree with the originals. They're gone as of
 
 If you were using any of those, that's a real migration and I'm sorry about it.
 The reason it's worth doing: you were getting two answers to one question
-depending on which import you reached for, and neither package knew the other
-existed. One `@cfg` for everything that decides at build time, and this for the
-one question that genuinely can't be answered until you're running.
+depending on which import you happened to reach for, and neither package knew
+the other existed. One `@cfg` for everything that decides at build time, and
+this for the one question that genuinely can't be answered until you're
+actually running.
 
 ## Installation
 
 ```bash
-# npm / yarn / pnpm
-npm install onlywhen
-
-# Deno
+# deno
 deno add jsr:@hiisi/onlywhen
+
+# node, bun
+npm install onlywhen
+bun add onlywhen
 ```
 
-As a library:
-
-```typescript
-// Deno / JSR
-import { all, arch, onlywhen, platform, runtime } from "jsr:@hiisi/onlywhen";
-```
-
-```typescript
-// Node.js
-import { all, arch, onlywhen, platform, runtime } from "@hiisi/onlywhen";
-```
-
-Or add to your project:
+Or straight into the manifest:
 
 ```jsonc
 // deno.json
 {
   "imports": {
-    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.5"
-  }
-}
-
-// package.json
-{
-  "dependencies": {
-    "onlywhen": "^0.5"
+    "@hiisi/onlywhen": "jsr:@hiisi/onlywhen@^0.7"
   }
 }
 ```
+
+Do note the jsr and npm names differ right now. jsr requires a scope, npm
+doesn't, and the flat `onlywhen` name was already ours there. That's a wart and
+it'll get tidied.
 
 ## Usage
 
-### Platform Detection
+### Detection
+
+Three namespaces, all booleans, all resolved once when the module loads.
 
 ```typescript
-import { platform } from "@hiisi/onlywhen";
+import { arch, platform, runtime } from "@hiisi/onlywhen";
 
-platform.darwin; // true on macOS
-platform.linux; // true on Linux
-platform.windows; // true on Windows
+platform.darwin;  // true on macOS
+platform.linux;
+platform.windows;
+
+runtime.deno;     // true in Deno
+runtime.node;
+runtime.bun;
+runtime.browser;
+
+arch.x64;         // true on x86_64
+arch.arm64;       // true on aarch64 and Apple Silicon
 ```
 
-### Runtime Detection
+If you want the detected value as a string rather than a set of booleans:
 
 ```typescript
-import { runtime } from "@hiisi/onlywhen";
+import { archName, platformName } from "@hiisi/onlywhen";
 
-runtime.deno; // true in Deno
-runtime.node; // true in Node.js
-runtime.bun; // true in Bun
-runtime.browser; // true in browsers
+platformName;  // "darwin" | "linux" | "windows" | "unknown"
+archName;      // "x64" | "arm64" | "unknown"
 ```
 
-### Architecture Detection
+`"unknown"` is a real answer, not a failure. Detection can come up empty on a
+runtime nobody has taught it about yet, and saying so is better than guessing.
 
-```typescript
-import { arch } from "@hiisi/onlywhen";
+### Matching
 
-arch.x64; // true on x86_64
-arch.arm64; // true on aarch64 / Apple Silicon
-```
-
-### Combinators
-
-```typescript
-import { all, any, arch, not, platform } from "@hiisi/onlywhen";
-
-// All conditions must be true
-all(platform.darwin, arch.arm64);
-
-// At least one must be true
-any(platform.linux, platform.darwin);
-
-// Negation
-not(platform.windows);
-
-// Nesting
-all(platform.darwin, not(arch.x64));
-```
-
-### Feature Flags
-
-Define features in your `deno.json` or `package.json`:
-
-```json
-{
-  "features": ["experimental", "legacy_compat"]
-}
-```
-
-Check them at runtime:
-
-```typescript
-import { feature, onlywhen } from "@hiisi/onlywhen";
-
-// Standalone function (preferred)
-feature("experimental"); // true if listed
-
-// Or via onlywhen object
-onlywhen.feature("experimental"); // also works
-onlywhen.features; // Set<string> of all features
-```
-
-### Decorators
-
-The decorator implements the legacy TypeScript decorator protocol (`target`,
-`propertyKey`, `descriptor`), so `experimentalDecorators` has to be on. Under the
-TC39 standard decorators that Deno 2 and TypeScript 5 use by default, the
-decorator receives arguments it does not recognise, returns the target unchanged,
-and the condition has no runtime effect at all. Nothing is logged when this
-happens.
-
-```jsonc
-// deno.json
-{
-  "compilerOptions": {
-    "experimentalDecorators": true
-  }
-}
-```
-
-```typescript
-import { all, arch, feature, onlywhen, platform, runtime } from "@hiisi/onlywhen";
-
-// Class becomes empty if condition is false
-@onlywhen(platform.darwin)
-class MacFeatures {
-  setup() {/* ... */}
-}
-
-// Method becomes no-op if condition is false
-class App {
-  @onlywhen(runtime.deno)
-  denoMethod() {/* ... */}
-
-  @onlywhen(all(platform.linux, arch.x64))
-  linuxX64Method() {/* ... */}
-
-  @onlywhen(feature("experimental"))
-  experimentalMethod() {/* ... */}
-}
-```
-
-Builds that run the static analysis transform below do not need the flag for
-decorators the transform can evaluate: those are stripped and stubbed before any
-decorator protocol runs.
-
-### Runtime Matching
+`match` picks one branch and gives you its value. Every branch returns the same
+type, because it returns one value and not four.
 
 ```typescript
 import { match } from "@hiisi/onlywhen";
 
-// Each branch names globals that exist only in its own runtime, so the others need them
-// declared to type-check here. `@types/bun` and `@types/node` do this properly.
+// each branch names globals that only exist in its own runtime, so the others
+// need them declared to type-check here. `@types/node` and `@types/bun` do
+// this properly.
 declare const Bun: { file(path: string): { text(): Promise<string> } };
-declare function require(
-  name: "fs/promises",
-): { readFile(path: string, encoding: string): Promise<string> };
+declare function require(name: "fs/promises"): {
+  readFile(path: string, encoding: string): Promise<string>;
+};
 
-// Every branch returns the same type, because `match` returns one value and not three.
-// Bun's `file().text()` is asynchronous, so the other two are read asynchronously too
-// rather than one branch quietly returning a promise and the others a string.
 const contents: Promise<string> = match({
   deno: () => Deno.readTextFile("file.txt"),
   node: () => require("fs/promises").readFile("file.txt", "utf-8"),
   bun: () => Bun.file("file.txt").text(),
   default: () => {
-    throw new Error("Unsupported runtime");
+    throw new Error("unsupported runtime");
   },
 });
 ```
 
-### String Values
+Give it a `default` and you get `T` back. Leave it out and you get
+`T | undefined`, because there's a case you haven't handled and the type says
+so rather than pretending otherwise. `matchAsync` is the same thing, awaited.
 
-If you need the actual detected values as strings (not booleans):
-
-```typescript
-import { archName, getRuntimeName, platformName } from "@hiisi/onlywhen";
-
-console.log(platformName); // "darwin" | "linux" | "windows" | "unknown"
-console.log(archName); // "x86_64" | "aarch64" | "arm" | "x86" | "unknown"
-console.log(getRuntimeName()); // "deno" | "node" | "bun" | "browser" | "unknown"
-```
+Reaching for `match` at all is worth a second thought though. If the branches
+are doing filesystem or process work, [`@hiisi/shimp`](https://jsr.io/@hiisi/shimp)
+probably already covers it and you can skip the branching entirely.
 
 ## Comparison to Rust
 
-| Rust                                                       | onlywhen                                      |
-| :--------------------------------------------------------- | :-------------------------------------------- |
-| `#[cfg(target_os = "macos")]`                              | `@onlywhen(platform.darwin)`                  |
-| `#[cfg(all(target_os = "linux", target_arch = "x86_64"))]` | `@onlywhen(all(platform.linux, arch.x64))`    |
-| `cfg!(target_os = "windows")`                              | `platform.windows`                            |
-| `#[cfg(feature = "experimental")]`                         | `@onlywhen(onlywhen.feature("experimental"))` |
-| `#[cfg(not(windows))]`                                     | `@onlywhen(not(platform.windows))`            |
+| Rust                               | here                                |
+| :---------------------------------- | :---------------------------------- |
+| `cfg!(target_os = "windows")`      | `platform.windows`                  |
+| `cfg!(target_arch = "x86_64")`     | `arch.x64`                          |
+| `#[cfg(target_os = "macos")]`      | `@hiisi/cfg-ts`, not this           |
 
-## Runtime Compatibility
+The first two are the honest comparison: `cfg!` is the runtime-value form and
+that's what this package is. The attribute form decides at build time and lives
+in `cfg-ts`, which is the whole point of the 0.7.0 split.
 
-Deno, Node and Bun, and a browser for the detection half.
+## Runtime compatibility
 
-I have to be straight about what that claim rests on, because until now it
-rested on nothing. This section used to carry a table saying Deno 1.x and 2.x,
-Node 18, 20 and 22, and Bun canary and latest all passed, dated to a day in
-December. Every test in this package is a `Deno.test`, so not one of those seven
-had ever been run. The table was not out of date, it was never true.
+Deno, Node and Bun, plus a browser for the detection half.
 
-So: the suite runs under Deno today and the cross-runtime matrix is being built.
-When it lands this section says which runtimes actually ran and on what date,
-generated from the run rather than typed in. Until then, take Node and Bun as
-intended-and-unverified, which is what they have been all along.
+I have to be straight about what that rests on. This section used to carry a
+table claiming Deno 1.x and 2.x, Node 18, 20 and 22, and Bun canary and latest
+all passed, dated to a day in December. Every test in this package is a
+`Deno.test`, so not one of those seven had ever run. The table wasn't out of
+date, it was never true.
+
+So: the suite runs under Deno today, and the cross-runtime matrix is being
+built. When it lands, this section says which runtimes actually ran and on what
+date, generated from the run rather than typed in by me. Until then take Node
+and Bun as intended and unverified, which is what they've been all along.
 
 ## Support
 
