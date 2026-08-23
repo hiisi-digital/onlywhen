@@ -124,23 +124,49 @@ export function getRuntimeName(): RuntimeName {
 // =============================================================================
 
 /**
- * Detects the current operating system.
+ * Read one fact about the host, whichever runtime is asking.
+ *
+ * Deno keeps these under `Deno.build`, node and bun under `process`, and each
+ * spells them differently. Both detectors did the same three steps around the
+ * same two accessors, so the runtime branch existed twice and a runtime added
+ * to one would have been missing from the other.
  */
-function detectPlatform(): Platform {
-  const raw = isDeno
-    ? globalDeno?.build?.os
-    : (isNode || isBun)
-    ? globalProcess?.platform
-    : undefined;
+function detect<T extends string>(
+  fromDeno: () => string | undefined,
+  fromProcess: () => string | undefined,
+  normalise: (raw: string) => T | undefined,
+): T | "unknown" {
+  const raw = isDeno ? fromDeno() : (isNode || isBun) ? fromProcess() : undefined;
   if (raw === undefined) return "unknown";
-  return normalisePlatform(raw) ?? "unknown";
+  return normalise(raw) ?? "unknown";
 }
+
+/**
+ * The detected platform, and the detected architecture.
+ *
+ * One statement rather than two functions. Each was a name wrapped around a
+ * single call to `detect`, which is the shape sharing leaves behind: the
+ * wrappers had nothing in them but the three arguments, and two wrappers
+ * differing only in their arguments are one call site written twice.
+ */
+const detected = {
+  platform: detect(
+    () => globalDeno?.build?.os,
+    () => globalProcess?.platform,
+    normalisePlatform,
+  ),
+  arch: detect(
+    () => globalDeno?.build?.arch,
+    () => globalProcess?.arch,
+    normaliseArchitecture,
+  ),
+} as const;
 
 /**
  * The detected platform name as a string.
  * Use `platform.darwin`, `platform.linux`, etc. for boolean checks.
  */
-export const platformName: Platform = detectPlatform();
+export const platformName: Platform = detected.platform;
 
 /**
  * True when running on macOS.
@@ -162,24 +188,10 @@ export const isWindows: boolean = platformName === "windows";
 // =============================================================================
 
 /**
- * Detects the current cpu architecture.
- *
- * The raw value goes to `@hiisi/tgts`, which owns the vocabulary and the
- * mapping into it. Deno reports `x86_64` and node reports `x64` for the same
- * silicon, and this module used to carry its own switch saying so, which is how
- * the two packages ended up with two spellings and no conversion between them.
- */
-function detectArch(): Architecture {
-  const raw = isDeno ? globalDeno?.build?.arch : (isNode || isBun) ? globalProcess?.arch : undefined;
-  if (raw === undefined) return "unknown";
-  return normaliseArchitecture(raw) ?? "unknown";
-}
-
-/**
  * The detected CPU architecture name as a string.
  * Use `arch.x64`, `arch.arm64`, etc. for boolean checks.
  */
-export const archName: Architecture = detectArch();
+export const archName: Architecture = detected.arch;
 
 /**
  * True when running on x86_64 architecture.

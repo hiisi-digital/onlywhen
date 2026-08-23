@@ -49,32 +49,39 @@ import type {
  * });
  * ```
  */
+/**
+ * Which handler this runtime is owed, most specific first.
+ *
+ * The choosing is the whole of what `match` and `matchAsync` do; the calling
+ * differs by an `await`. Written out in both, the order of specificity existed
+ * twice, and a runtime added to one would have been missing from the other
+ * with nothing to say so.
+ */
+function pick<H>(handlers: {
+  deno?: H;
+  bun?: H;
+  node?: H;
+  browser?: H;
+  default?: H;
+}): H | undefined {
+  if (isDeno && handlers.deno !== undefined) return handlers.deno;
+  if (isBun && handlers.bun !== undefined) return handlers.bun;
+  if (isNode && handlers.node !== undefined) return handlers.node;
+  if (isBrowser && handlers.browser !== undefined) return handlers.browser;
+  return handlers.default;
+}
+
+/**
+ * Run the handler this runtime is owed.
+ *
+ * @typeParam T - What the handlers return
+ * @param handlers - One function per runtime, plus an optional default
+ * @returns The handler's result, or `undefined` when none applies
+ */
 export function match<T>(handlers: ExhaustiveMatchHandlers<T>): T;
 export function match<T>(handlers: MatchHandlers<T>): T | undefined;
 export function match<T>(handlers: MatchHandlers<T>): T | undefined {
-  // Check each runtime in order of specificity
-  if (isDeno && handlers.deno !== undefined) {
-    return handlers.deno();
-  }
-
-  if (isBun && handlers.bun !== undefined) {
-    return handlers.bun();
-  }
-
-  if (isNode && handlers.node !== undefined) {
-    return handlers.node();
-  }
-
-  if (isBrowser && handlers.browser !== undefined) {
-    return handlers.browser();
-  }
-
-  // Fall back to default handler
-  if (handlers.default !== undefined) {
-    return handlers.default();
-  }
-
-  return undefined;
+  return pick(handlers)?.();
 }
 
 // =============================================================================
@@ -113,27 +120,6 @@ export function matchAsync<T>(
 export async function matchAsync<T>(
   handlers: AsyncMatchHandlers<T>,
 ): Promise<T | undefined> {
-  // Check each runtime in order of specificity
-  if (isDeno && handlers.deno !== undefined) {
-    return await handlers.deno();
-  }
-
-  if (isBun && handlers.bun !== undefined) {
-    return await handlers.bun();
-  }
-
-  if (isNode && handlers.node !== undefined) {
-    return await handlers.node();
-  }
-
-  if (isBrowser && handlers.browser !== undefined) {
-    return await handlers.browser();
-  }
-
-  // Fall back to default handler
-  if (handlers.default !== undefined) {
-    return await handlers.default();
-  }
-
-  return undefined;
+  const handler = pick(handlers);
+  return handler === undefined ? undefined : await handler();
 }

@@ -102,17 +102,17 @@ Three namespaces, all booleans, all resolved once when the module loads.
 ```typescript
 import { arch, platform, runtime } from "@hiisi/onlywhen";
 
-platform.darwin;  // true on macOS
+platform.darwin; // true on macOS
 platform.linux;
 platform.windows;
 
-runtime.deno;     // true in Deno
+runtime.deno; // true in Deno
 runtime.node;
 runtime.bun;
 runtime.browser;
 
-arch.x64;         // true on x86_64
-arch.arm64;       // true on aarch64 and Apple Silicon
+arch.x64; // true on x86_64
+arch.arm64; // true on aarch64 and Apple Silicon
 ```
 
 If you want the detected value as a string rather than a set of booleans:
@@ -120,8 +120,8 @@ If you want the detected value as a string rather than a set of booleans:
 ```typescript
 import { archName, platformName } from "@hiisi/onlywhen";
 
-platformName;  // "darwin" | "linux" | "windows" | "unknown"
-archName;      // "x64" | "arm64" | "unknown"
+platformName; // "darwin" | "linux" | "windows" | "unknown"
+archName; // "x64" | "arm64" | "unknown"
 ```
 
 `"unknown"` is a real answer, not a failure. Detection can come up empty on a
@@ -163,11 +163,11 @@ probably already covers it and you can skip the branching entirely.
 
 ## Comparison to Rust
 
-| Rust                               | here                                |
-| :---------------------------------- | :---------------------------------- |
-| `cfg!(target_os = "windows")`      | `platform.windows`                  |
-| `cfg!(target_arch = "x86_64")`     | `arch.x64`                          |
-| `#[cfg(target_os = "macos")]`      | `@hiisi/cfg-ts`, not this           |
+| Rust                           | here                      |
+| :----------------------------- | :------------------------ |
+| `cfg!(target_os = "windows")`  | `platform.windows`        |
+| `cfg!(target_arch = "x86_64")` | `arch.x64`                |
+| `#[cfg(target_os = "macos")]`  | `@hiisi/cfg-ts`, not this |
 
 The first two are the honest comparison: `cfg!` is the runtime-value form and
 that's what this package is. The attribute form decides at build time and lives
